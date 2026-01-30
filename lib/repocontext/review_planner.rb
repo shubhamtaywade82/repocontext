@@ -18,22 +18,22 @@ module RepoContext
     }.freeze
 
     def initialize(client:, model:, logger: Settings.logger)
-      @client = client
-      @model = model
+      @ollama_client = client
+      @model_name = model
       @log = logger
     end
 
-    def next_step(state, candidate_paths)
+    def next_step(review_state, candidate_paths)
       return done_step("No files to review") if candidate_paths.empty?
 
-      remaining_paths = state.remaining_candidates(candidate_paths)
-      return done_step("All candidates reviewed") if remaining_paths.empty?
+      paths_not_yet_reviewed = review_state.remaining_candidates(candidate_paths)
+      return done_step("All candidates reviewed") if paths_not_yet_reviewed.empty?
 
-      plan_response = request_next_action(state, remaining_paths)
-      build_plan_step(plan_response, remaining_paths)
+      llm_response = request_next_action(review_state, paths_not_yet_reviewed)
+      build_plan_step_from_response(llm_response, paths_not_yet_reviewed)
     rescue Ollama::Error => e
       @log.warn { "planner failed: #{e.message}, defaulting to first remaining file" }
-      ReviewPlanStep.new(action: ReviewPlanStep::REVIEW_FILE, target: remaining_paths.first, reasoning: "fallback")
+      ReviewPlanStep.new(action: ReviewPlanStep::REVIEW_FILE, target: paths_not_yet_reviewed.first, reasoning: "fallback")
     end
 
     private
@@ -42,28 +42,38 @@ module RepoContext
       ReviewPlanStep.new(action: ReviewPlanStep::DONE, reasoning: reasoning)
     end
 
-    def request_next_action(state, remaining_paths)
-      prompt = build_plan_prompt(state, remaining_paths)
-      @client.generate(prompt: prompt, schema: PLAN_SCHEMA, model: @model)
+    def request_next_action(review_state, paths_not_yet_reviewed)
+      plan_prompt = build_plan_prompt(review_state, paths_not_yet_reviewed)
+      @ollama_client.generate(prompt: plan_prompt, schema: PLAN_SCHEMA, model: @model_name)
     end
 
-    def build_plan_step(plan_response, remaining_paths)
-      action = plan_response["next_action"].to_s.strip
-      action = ReviewPlanStep::DONE if plan_response["done"] == true
-      target = plan_response["target"].to_s.strip
-      target = nil if target.empty?
+    def build_plan_step_from_response(llm_response, paths_not_yet_reviewed)
+      action = parse_action_from_response(llm_response)
+      target = parse_target_from_response(llm_response)
+      reasoning = llm_response["reasoning"].to_s.strip
       @log.info { "planner: action=#{action}, target=#{target}" }
-      ReviewPlanStep.new(action: action, target: target, reasoning: plan_response["reasoning"].to_s.strip)
+      ReviewPlanStep.new(action: action, target: target, reasoning: reasoning)
     end
 
-    def build_plan_prompt(state, remaining_paths)
-      <<~PROMPT
-        You are planning the next step of a code review. Review focus: #{state.focus}
+    def parse_action_from_response(llm_response)
+      return ReviewPlanStep::DONE if llm_response["done"] == true
 
-        #{state.summary_for_planner}
+      llm_response["next_action"].to_s.strip
+    end
+
+    def parse_target_from_response(llm_response)
+      target = llm_response["target"].to_s.strip
+      target.empty? ? nil : target
+    end
+
+    def build_plan_prompt(review_state, paths_not_yet_reviewed)
+      <<~PROMPT
+        You are planning the next step of a code review. Review focus: #{review_state.focus}
+
+        #{review_state.summary_for_planner}
 
         Remaining files not yet reviewed (choose one path exactly as listed, or say summarize/done):
-        #{remaining_paths.first(40).join("\n")}
+        #{paths_not_yet_reviewed.first(40).join("\n")}
 
         If there are remaining files, set next_action to "review_file" and target to one path from the list. When no files remain or you are done, set next_action to "done" and done to true.
         Return JSON: done (boolean), next_action ("review_file" | "summarize" | "done"), target (path when review_file), reasoning (short).

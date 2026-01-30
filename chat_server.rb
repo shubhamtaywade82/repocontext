@@ -17,10 +17,30 @@ def ollama_client
   settings.ollama_client
 end
 
-def repo_context_builder
-  @repo_context_builder ||= RepoContext::ContextBuilder.new(
+def discovery_path_selector
+  @discovery_path_selector ||= RepoContext::DiscoveryPathSelector.new(
+    repo_root: RepoContext::Settings::REPO_ROOT,
     client: ollama_client,
     model: settings.ollama_model,
+    logger: RepoContext::Settings.logger
+  )
+end
+
+def embedding_context_builder
+  return nil unless RepoContext::Settings::EMBED_CONTEXT_ENABLED
+
+  @embedding_context_builder ||= RepoContext::EmbeddingContextBuilder.new(
+    client: ollama_client,
+    repo_root: RepoContext::Settings::REPO_ROOT,
+    candidate_paths_source: -> { discovery_path_selector.candidate_paths },
+    logger: RepoContext::Settings.logger
+  )
+end
+
+def repo_context_builder
+  @repo_context_builder ||= RepoContext::ContextBuilder.new(
+    discovery_selector: discovery_path_selector,
+    embedding_builder: embedding_context_builder,
     logger: RepoContext::Settings.logger
   )
 end
@@ -35,9 +55,22 @@ end
 
 def code_review_agent
   @code_review_agent ||= RepoContext::CodeReviewAgent.new(
-    client: ollama_client,
-    model: settings.ollama_model,
-    context_builder: repo_context_builder,
+    path_source: discovery_path_selector,
+    planner: RepoContext::ReviewPlanner.new(
+      client: ollama_client,
+      model: settings.ollama_model,
+      logger: RepoContext::Settings.logger
+    ),
+    executor: RepoContext::ReviewStepExecutor.new(
+      client: ollama_client,
+      model: settings.ollama_model,
+      logger: RepoContext::Settings.logger
+    ),
+    summary_writer: RepoContext::ReviewSummaryWriter.new(
+      client: ollama_client,
+      model: settings.ollama_model,
+      logger: RepoContext::Settings.logger
+    ),
     logger: RepoContext::Settings.logger
   )
 end

@@ -1,54 +1,49 @@
 # frozen_string_literal: true
 
 module RepoContext
+  # Agentic code review loop: plan → execute → observe until done.
+  # Depends on abstractions: path_source (duck type: candidate_paths), planner, executor, summary_writer.
   class CodeReviewAgent
-    def initialize(client:, model:, context_builder:, logger: Settings.logger)
-      @ollama_client = client
-      @model_name = model
-      @repo_context_builder = context_builder
+    def initialize(
+      path_source:,
+      planner:,
+      executor:,
+      summary_writer:,
+      logger: Settings.logger
+    )
+      @path_source = path_source
+      @planner = planner
+      @executor = executor
+      @summary_writer = summary_writer
       @log = logger
-      @planner = ReviewPlanner.new(client: client, model: model, logger: logger)
-      @executor = ReviewStepExecutor.new(client: client, model: model, logger: logger)
     end
 
     def run(request_paths: [], focus: Settings::REVIEW_FOCUS, &event_callback)
-      candidate_path_list = resolve_candidate_paths(request_paths)
-      review_state = ReviewState.new(request_paths: candidate_path_list, focus: focus)
+      paths_to_review = resolve_paths_to_review(request_paths)
+      current_state = ReviewState.new(request_paths: paths_to_review, focus: focus)
 
       Settings::REVIEW_MAX_ITERATIONS.times do
-        yield_event(event_callback, :plan, review_state.iteration, nil)
+        yield_event(event_callback, :plan, current_state.iteration, nil)
 
-        plan_step = @planner.next_step(review_state, candidate_path_list)
+        plan_step = @planner.next_step(current_state, paths_to_review)
         if plan_step.done?
-          review_state = run_summary_and_finish(review_state, event_callback)
-          yield_event(event_callback, :done, review_state.iteration, review_state)
-          return review_state
+          current_state = run_summary_and_emit(current_state, event_callback)
+          yield_event(event_callback, :done, current_state.iteration, current_state)
+          return current_state
         end
 
         next unless plan_step.review_file? && plan_step.target
 
-        file_path = resolve_file_path(plan_step.target, candidate_path_list)
-        unless file_path
-          @log.warn { "planner target not in candidates: #{plan_step.target}" }
-          next
-        end
-
-        yield_event(event_callback, :review_file, review_state.iteration, file_path)
-
-        file_content = read_file_content(file_path)
-        unless file_content
-          @log.warn { "could not read file: #{file_path}" }
-          review_state = review_state.append(FileReviewOutcome.with_no_findings(reviewed_path: file_path))
-          next
-        end
-
-        outcome = @executor.execute(plan_step, file_content: file_content, path: file_path)
-        review_state = review_state.append(outcome)
-        yield_event(event_callback, :review_done, review_state.iteration, outcome)
+        current_state = process_review_file_step(
+          plan_step,
+          current_state,
+          paths_to_review,
+          event_callback
+        )
       end
 
-      yield_event(event_callback, :done, review_state.iteration, review_state)
-      review_state
+      yield_event(event_callback, :done, current_state.iteration, current_state)
+      current_state
     end
 
     def run_with_events(request_paths: [], focus: Settings::REVIEW_FOCUS, &block)
@@ -57,16 +52,37 @@ module RepoContext
 
     private
 
-    def resolve_candidate_paths(request_paths)
-      path_list = request_paths.any? ? request_paths : @repo_context_builder.candidate_paths
-      path_list.first(Settings::REVIEW_MAX_PATHS)
+    def resolve_paths_to_review(request_paths)
+      paths = request_paths.any? ? request_paths : @path_source.candidate_paths
+      paths.first(Settings::REVIEW_MAX_PATHS)
     end
 
-    def run_summary_and_finish(review_state, event_callback)
-      yield_event(event_callback, :summarize, review_state.iteration, nil)
-      summary_outcome = @executor.execute_summary(review_state)
-      new_state = review_state.append(summary_outcome)
-      yield_event(event_callback, :summary_done, new_state.iteration, summary_outcome)
+    def run_summary_and_emit(current_state, event_callback)
+      yield_event(event_callback, :summarize, current_state.iteration, nil)
+      summary_outcome = @summary_writer.summarize(current_state)
+      state_after_summary = current_state.append(summary_outcome)
+      yield_event(event_callback, :summary_done, state_after_summary.iteration, summary_outcome)
+      state_after_summary
+    end
+
+    def process_review_file_step(plan_step, current_state, paths_to_review, event_callback)
+      file_path = resolve_file_path(plan_step.target, paths_to_review)
+      unless file_path
+        @log.warn { "planner target not in candidates: #{plan_step.target}" }
+        return current_state
+      end
+
+      yield_event(event_callback, :review_file, current_state.iteration, file_path)
+
+      file_content = read_file_content(file_path)
+      unless file_content
+        @log.warn { "could not read file: #{file_path}" }
+        return current_state.append(FileReviewOutcome.with_no_findings(reviewed_path: file_path))
+      end
+
+      outcome = @executor.execute(plan_step, file_content: file_content, path: file_path)
+      new_state = current_state.append(outcome)
+      yield_event(event_callback, :review_done, new_state.iteration, outcome)
       new_state
     end
 
@@ -74,9 +90,9 @@ module RepoContext
       callback&.call(event, iteration, payload)
     end
 
-    def resolve_file_path(target_path, candidate_path_list)
-      return target_path if candidate_path_list.include?(target_path)
-      candidate_path_list.find do |candidate_path|
+    def resolve_file_path(target_path, paths_to_review)
+      return target_path if paths_to_review.include?(target_path)
+      paths_to_review.find do |candidate_path|
         candidate_path == target_path ||
           candidate_path.end_with?("/#{target_path}") ||
           File.basename(candidate_path) == target_path

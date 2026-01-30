@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 module RepoContext
+  # Single responsibility: review one file and return findings (FileReviewOutcome).
   class ReviewStepExecutor
     FINDINGS_SCHEMA = {
       "type" => "object",
@@ -32,9 +33,9 @@ module RepoContext
 
     def execute(plan_step, file_content:, path:)
       prompt = build_review_prompt(plan_step, file_content, path)
-      plan_response = @client.generate(prompt: prompt, schema: FINDINGS_SCHEMA, model: @model)
-      findings = normalize_findings(Array(plan_response["findings"]), path)
-      observation = plan_response["observation"].to_s.strip
+      response = @client.generate(prompt: prompt, schema: FINDINGS_SCHEMA, model: @model)
+      findings = normalize_findings(Array(response["findings"]), path)
+      observation = response["observation"].to_s.strip
       observation = nil if observation.empty?
       @log.info { "executor: #{findings.size} finding(s) for #{path}" }
       FileReviewOutcome.new(findings: findings, observation: observation, reviewed_path: path)
@@ -47,27 +48,7 @@ module RepoContext
       )
     end
 
-    def execute_summary(state)
-      return FileReviewOutcome.with_no_findings(reviewed_path: nil) if state.reviewed_paths.empty?
-
-      prompt = build_summary_prompt(state)
-      plan_response = @client.generate(prompt: prompt, schema: SUMMARY_SCHEMA, model: @model)
-      summary_text = plan_response["summary"].to_s.strip
-      summary_text = "No summary produced." if summary_text.empty?
-      @log.info { "executor: summary produced" }
-      FileReviewOutcome.new(findings: [], observation: summary_text, reviewed_path: nil)
-    rescue Ollama::Error => e
-      @log.warn { "summary failed: #{e.message}" }
-      FileReviewOutcome.new(findings: [], observation: "Summary failed: #{e.message}", reviewed_path: nil)
-    end
-
     private
-
-    SUMMARY_SCHEMA = {
-      "type" => "object",
-      "required" => ["summary"],
-      "properties" => { "summary" => { "type" => "string" } }
-    }.freeze
 
     def build_review_prompt(plan_step, file_content, path)
       <<~PROMPT
@@ -87,21 +68,10 @@ module RepoContext
       PROMPT
     end
 
-    def build_summary_prompt(state)
-      findings_text = state.findings.empty? ? "No findings." : state.findings.map { |f| "[#{f['severity']}] #{f['file']}#{f['line'] ? ":#{f['line']}" : ''} #{f['rule']}: #{f['message']}" }.join("\n")
-      <<~PROMPT
-        Code review summary. Focus was: #{state.focus}
-        Files reviewed: #{state.reviewed_paths.join(', ')}
-        Findings:
-        #{findings_text}
-
-        Return JSON with one key "summary": a short paragraph for the developer (priorities, main risks, and one or two concrete next steps).
-      PROMPT
-    end
-
     def normalize_findings(raw, default_path)
       raw.filter_map do |h|
         next unless h.is_a?(Hash) && h["message"].to_s.strip != ""
+
         {
           "file" => (h["file"].to_s.strip.empty? ? default_path : h["file"].to_s.strip),
           "line" => h["line"].nil? ? nil : h["line"].to_i,

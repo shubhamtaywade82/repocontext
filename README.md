@@ -106,27 +106,30 @@ Open http://localhost:4567 (or set `PORT=4568`).
 
 ---
 
-## Project layout
+## Project layout (SOLID-oriented)
 
 ```
 repocontext/
-├── bin/chat              # Server entrypoint
-├── config/settings.rb    # Env-based config
+├── bin/chat                    # Server entrypoint
+├── config/settings.rb          # Env-based config
 ├── lib/
 │   ├── repocontext.rb
 │   └── repocontext/
 │       ├── version.rb
-│       ├── ollama_client_factory.rb   # Cached Ollama client
-│       ├── context_builder.rb         # Gather repo context
-│       ├── chat_service.rb            # Chat with Ollama
-│       ├── review_state.rb            # Review loop state
-│       ├── review_plan_step.rb        # Plan step (review_file / done)
-│       ├── file_review_outcome.rb     # Result of one file review
-│       ├── review_planner.rb          # LLM: next file or done
-│       ├── review_step_executor.rb    # LLM: review file, summary
-│       └── code_review_agent.rb       # Agentic review loop
-├── views/index.erb       # Chat + Code Review UI
-├── chat_server.rb        # Sinatra routes and helpers
+│       ├── ollama_client_factory.rb     # Cached Ollama client (DIP)
+│       ├── discovery_path_selector.rb   # SRP: scan repo + LLM pick paths
+│       ├── embedding_context_builder.rb  # SRP: embed index + context_for_question
+│       ├── context_builder.rb           # Orchestrates context (depends on abstractions)
+│       ├── chat_service.rb              # Chat with Ollama
+│       ├── review_state.rb              # Review loop state
+│       ├── review_plan_step.rb          # Plan step (review_file / done)
+│       ├── file_review_outcome.rb       # Result of one file review
+│       ├── review_planner.rb            # LLM: next file or done
+│       ├── review_step_executor.rb      # SRP: review one file → findings
+│       ├── review_summary_writer.rb     # SRP: state → summary outcome
+│       └── code_review_agent.rb         # Agentic loop (path_source, planner, executor, summary_writer)
+├── views/index.erb            # Chat + Code Review UI
+├── chat_server.rb             # Sinatra routes, wires dependencies
 ├── Gemfile
 └── README.md
 ```

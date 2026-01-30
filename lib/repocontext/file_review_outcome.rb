@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 module RepoContext
-  # Result of reviewing one file (or the summary step): findings, optional observation, optional path.
+  # Outcome of reviewing a single file (or the summary step): findings list, optional observation, optional path.
+  # Use .with_no_findings(reviewed_path: path) for a class-level factory when no findings were produced.
   class FileReviewOutcome
     attr_reader :findings, :observation, :reviewed_path
 
