@@ -136,24 +136,117 @@
     }
     .progress-steps .step.active { background: #2563eb; }
     .progress-steps .step.done { background: #64748b; }
+    .tabs {
+      display: flex;
+      gap: 0;
+      padding: 0 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+    }
+    .tab {
+      padding: 0.5rem 1rem;
+      border: none;
+      background: transparent;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 0.875rem;
+      border-bottom: 2px solid transparent;
+    }
+    .tab:hover { color: #e2e8f0; }
+    .tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+    .panel { display: none; flex-direction: column; flex: 1; min-height: 0; }
+    .panel.active { display: flex; }
+    .review-input {
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      max-width: 48rem;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .review-input label { font-size: 0.75rem; color: #94a3b8; }
+    .review-input input {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #475569;
+      border-radius: 0.5rem;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+    }
+    .review-input #runReview {
+      align-self: flex-start;
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 0.5rem;
+      background: #16a34a;
+      color: #fff;
+      cursor: pointer;
+      font-size: 0.875rem;
+    }
+    .review-input #runReview:hover { background: #15803d; }
+    .review-input #runReview:disabled { opacity: 0.6; cursor: not-allowed; }
+    .review-results {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .review-summary {
+      padding: 1rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 0.75rem;
+      white-space: pre-wrap;
+    }
+    .review-finding {
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.5rem;
+      font-size: 0.8125rem;
+      border-left: 3px solid #64748b;
+    }
+    .review-finding.error { border-left-color: #f87171; }
+    .review-finding.warning { border-left-color: #fbbf24; }
+    .review-finding.suggestion { border-left-color: #64748b; }
+    .review-finding .path { color: #94a3b8; }
+    .review-finding .rule { font-weight: 600; color: #cbd5e1; }
   </style>
 </head>
 <body>
   <header class="header">
-    Repo Chat Assistant — answers questions using repo context and Ollama. Set <code>REPO_CONTEXT_PATH</code>, <code>CONTEXT_FILES</code>, <code>OLLAMA_BASE_URL</code> as needed.
+    Repo Chat Assistant — Chat about the codebase or run an agentic code review (plan → review files → summarize). <code>REPO_CONTEXT_PATH</code>, <code>CONTEXT_FILES</code>, <code>OLLAMA_BASE_URL</code>.
   </header>
-  <div class="messages" id="messages"></div>
-  <div class="input-area">
-    <div class="input-row">
-      <textarea id="input" placeholder="Ask about the codebase..." rows="1"></textarea>
-      <button type="button" id="send">Send</button>
+  <nav class="tabs">
+    <button type="button" class="tab active" data-tab="chat">Chat</button>
+    <button type="button" class="tab" data-tab="review">Code Review</button>
+  </nav>
+  <section id="panel-chat" class="panel active">
+    <div class="messages" id="messages"></div>
+    <div class="input-area">
+      <div class="input-row">
+        <textarea id="input" placeholder="Ask about the codebase..." rows="1"></textarea>
+        <button type="button" id="send">Send</button>
+      </div>
+      <div class="status" id="status"></div>
+      <div class="progress-steps" id="progressSteps" style="display: none;">
+        <span class="step" id="step1" title="Gathering context"></span>
+        <span class="step" id="step2" title="Asking Ollama"></span>
+      </div>
     </div>
-    <div class="status" id="status"></div>
-    <div class="progress-steps" id="progressSteps" style="display: none;">
-      <span class="step" id="step1" title="Gathering context"></span>
-      <span class="step" id="step2" title="Asking Ollama"></span>
+  </section>
+  <section id="panel-review" class="panel">
+    <div class="review-input">
+      <label>Paths (optional, comma-separated; empty = discover from repo)</label>
+      <input type="text" id="reviewPaths" placeholder="e.g. lib/repocontext/chat_service.rb, lib/repocontext/context_builder.rb">
+      <label>Focus (optional)</label>
+      <input type="text" id="reviewFocus" placeholder="e.g. Clean Ruby, naming, single responsibility">
+      <button type="button" id="runReview">Run code review</button>
     </div>
-  </div>
+    <div class="status" id="reviewStatus"></div>
+    <div class="review-results" id="reviewResults"></div>
+  </section>
   <script>
     const messagesEl = document.getElementById('messages');
     const inputEl = document.getElementById('input');
@@ -273,6 +366,115 @@
         sendMessage();
       }
     });
+
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    const reviewPathsEl = document.getElementById('reviewPaths');
+    const reviewFocusEl = document.getElementById('reviewFocus');
+    const runReviewBtn = document.getElementById('runReview');
+    const reviewStatusEl = document.getElementById('reviewStatus');
+    const reviewResultsEl = document.getElementById('reviewResults');
+
+    function setReviewStatus(text, isError) {
+      reviewStatusEl.innerHTML = text ? '<span class="spinner"></span>' + escapeHtml(text) : '';
+      reviewStatusEl.className = 'status' + (isError ? ' error' : '');
+      reviewStatusEl.style.display = text ? 'flex' : 'none';
+    }
+
+    async function runReview() {
+      const pathsStr = reviewPathsEl.value.trim();
+      const paths = pathsStr ? pathsStr.split(/\s*,\s*/).map(s => s.trim()).filter(Boolean) : [];
+      const focus = reviewFocusEl.value.trim();
+      runReviewBtn.disabled = true;
+      reviewResultsEl.innerHTML = '';
+      setReviewStatus('Starting code review…');
+      try {
+        const res = await fetch('/api/review/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paths, focus })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setReviewStatus(data.error || 'Request failed', true);
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let allFindings = [];
+        let summary = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const data = JSON.parse(line);
+              if (data.event === 'status') {
+                setReviewStatus(data.message || '');
+              } else if (data.event === 'review_file') {
+                setReviewStatus('Reviewing ' + (data.path || '') + '…');
+              } else if (data.event === 'findings') {
+                (data.findings || []).forEach(f => {
+                  allFindings.push(f);
+                  const div = document.createElement('div');
+                  div.className = 'review-finding ' + (f.severity || 'suggestion');
+                  div.innerHTML = '<span class="path">' + escapeHtml(f.file || '') + (f.line ? ':' + f.line : '') + '</span> <span class="rule">' + escapeHtml(f.rule || '') + '</span> ' + escapeHtml(f.message || '');
+                  reviewResultsEl.appendChild(div);
+                });
+              } else if (data.event === 'summary') {
+                summary = data.summary || '';
+                const sumDiv = document.createElement('div');
+                sumDiv.className = 'review-summary';
+                sumDiv.textContent = summary;
+                reviewResultsEl.insertBefore(sumDiv, reviewResultsEl.firstChild);
+              } else if (data.event === 'done') {
+                setReviewStatus('');
+                if (data.summary && !summary) {
+                  const sumDiv = document.createElement('div');
+                  sumDiv.className = 'review-summary';
+                  sumDiv.textContent = data.summary;
+                  reviewResultsEl.insertBefore(sumDiv, reviewResultsEl.firstChild);
+                }
+              } else if (data.event === 'error') {
+                setReviewStatus(data.error || 'Error', true);
+              }
+            } catch (_) {}
+          }
+        }
+        if (buffer.trim()) {
+          try {
+            const data = JSON.parse(buffer);
+            if (data.event === 'done' && data.summary) {
+              const sumDiv = document.createElement('div');
+              sumDiv.className = 'review-summary';
+              sumDiv.textContent = data.summary;
+              reviewResultsEl.insertBefore(sumDiv, reviewResultsEl.firstChild);
+            } else if (data.event === 'error') {
+              setReviewStatus(data.error || 'Error', true);
+            }
+          } catch (_) {}
+        }
+        setReviewStatus('');
+      } catch (e) {
+        setReviewStatus('Network error: ' + e.message, true);
+      } finally {
+        runReviewBtn.disabled = false;
+      }
+    }
+
+    runReviewBtn.addEventListener('click', runReview);
   </script>
 </body>
 </html>

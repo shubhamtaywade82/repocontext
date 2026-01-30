@@ -12,6 +12,10 @@ module RepoContext
     CANDIDATE_PATHS_MAX = 80
     DISCOVERY_PATHS_MAX = 5
 
+    REVIEW_MAX_ITERATIONS = ENV.fetch("REVIEW_MAX_ITERATIONS", 15).to_i
+    REVIEW_MAX_PATHS = ENV.fetch("REVIEW_MAX_PATHS", 20).to_i
+    REVIEW_FOCUS = ENV.fetch("REVIEW_FOCUS", "Clean Ruby: naming, single responsibility, short methods, guard clauses").freeze
+
     OLLAMA_BASE_URL = ENV.fetch("OLLAMA_BASE_URL", "http://192.168.1.4:11434")
     OLLAMA_MODEL = ENV.fetch("OLLAMA_MODEL", "llama3.1:8b")
     OLLAMA_TEMPERATURE = ENV.fetch("OLLAMA_TEMPERATURE", "0.5")

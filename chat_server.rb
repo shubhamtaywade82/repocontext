@@ -33,6 +33,15 @@ def chat_service
   )
 end
 
+def code_review_agent
+  @code_review_agent ||= RepoContext::CodeReviewAgent.new(
+    client: client,
+    model: settings.ollama_model,
+    context_builder: context_builder,
+    logger: RepoContext::Settings.logger
+  )
+end
+
 configure do
   set :ollama_client, RepoContext::OllamaClientFactory.build(
     model: RepoContext::Settings::OLLAMA_MODEL,
@@ -128,6 +137,78 @@ post "/api/chat/stream" do
       emit_stream_event(y, "error", error: "Ollama error: #{e.message}")
     rescue StandardError => e
       RepoContext::Settings.logger.error { "Stream error: #{e.message}" }
+      emit_stream_event(y, "error", error: e.message.to_s)
+    end
+  end
+
+  [200, { "Content-Type" => "application/x-ndjson; charset=utf-8" }, stream_body]
+rescue JSON::ParserError
+  status 422
+  content_type :json
+  { error: "Invalid JSON body" }.to_json
+end
+
+post "/api/review" do
+  request.body.rewind
+  body = JSON.parse(request.body.read)
+  paths = body["paths"].is_a?(Array) ? body["paths"].map(&:to_s).reject(&:empty?) : []
+  focus = body["focus"].to_s.strip
+  focus = RepoContext::Settings::REVIEW_FOCUS if focus.empty?
+
+  RepoContext::Settings.logger.info { "api/review: paths=#{paths.size}, focus=#{focus[0, 60]}..." }
+
+  state = code_review_agent.run(request_paths: paths, focus: focus)
+  summary = state.observations.last
+  content_type :json
+  {
+    findings: state.findings,
+    summary: summary,
+    reviewed_paths: state.reviewed_paths,
+    iterations: state.iteration
+  }.to_json
+rescue Ollama::Error => e
+  RepoContext::Settings.logger.error { "Ollama error: #{e.message}" }
+  status 502
+  content_type :json
+  { error: "Ollama error: #{e.message}" }.to_json
+rescue JSON::ParserError => e
+  RepoContext::Settings.logger.warn { "Invalid JSON body: #{e.message}" }
+  status 422
+  content_type :json
+  { error: "Invalid JSON body" }.to_json
+end
+
+post "/api/review/stream" do
+  request.body.rewind
+  body = JSON.parse(request.body.read)
+  paths = body["paths"].is_a?(Array) ? body["paths"].map(&:to_s).reject(&:empty?) : []
+  focus = body["focus"].to_s.strip
+  focus = RepoContext::Settings::REVIEW_FOCUS if focus.empty?
+
+  stream_body = Enumerator.new do |y|
+    begin
+      emit_stream_event(y, "status", message: "Starting code review…")
+      code_review_agent.run_with_events(request_paths: paths, focus: focus) do |event, iteration, payload|
+        case event
+        when :plan
+          emit_stream_event(y, "status", message: "Planning step #{iteration + 1}…")
+        when :review_file
+          emit_stream_event(y, "review_file", path: payload)
+        when :review_done
+          emit_stream_event(y, "findings", findings: payload.findings, path: payload.reviewed_path)
+        when :summarize
+          emit_stream_event(y, "status", message: "Summarizing…")
+        when :summary_done
+          emit_stream_event(y, "summary", summary: payload.observation)
+        when :done
+          emit_stream_event(y, "done", findings: payload.findings, summary: payload.observations.last, reviewed_paths: payload.reviewed_paths, iterations: payload.iteration)
+        end
+      end
+    rescue Ollama::Error => e
+      RepoContext::Settings.logger.error { "Ollama error: #{e.message}" }
+      emit_stream_event(y, "error", error: "Ollama error: #{e.message}")
+    rescue StandardError => e
+      RepoContext::Settings.logger.error { "Review error: #{e.message}" }
       emit_stream_event(y, "error", error: e.message.to_s)
     end
   end

@@ -17,6 +17,10 @@ module RepoContext
       @embed_index_cache = { mutex: Mutex.new, index: nil, repo: nil }
     end
 
+    def candidate_paths
+      candidate_paths_for_discovery
+    end
+
     def gather(question)
       base = load_repo_context
       used_size = base.size
