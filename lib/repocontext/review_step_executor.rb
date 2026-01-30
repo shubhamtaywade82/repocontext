@@ -48,7 +48,7 @@ module RepoContext
     end
 
     def execute_summary(state)
-      return FileReviewOutcome.with_no_findings(reviewed_path: nil) if state.findings.empty? && state.reviewed_paths.empty?
+      return FileReviewOutcome.with_no_findings(reviewed_path: nil) if state.reviewed_paths.empty?
 
       prompt = build_summary_prompt(state)
       plan_response = @client.generate(prompt: prompt, schema: SUMMARY_SCHEMA, model: @model)

@@ -5,24 +5,17 @@ module RepoContext
     SIMPLE_RESPONSE_SCHEMA = { "type" => "object", "properties" => { "response" => { "type" => "string" } } }.freeze
 
     def initialize(client:, model:, logger: Settings.logger)
-      @client = client
-      @model = model
+      @ollama_client = client
+      @model_name = model
       @log = logger
       @temperature = Settings::OLLAMA_TEMPERATURE.to_f
     end
 
     def ask(question, repo_context:, conversation_history:)
-      @log.info { "ask (chat): \"#{question[0, 80]}#{question.size > 80 ? '...' : ''}\" (model=#{@model})" }
-      messages = build_messages(repo_context, conversation_history, question)
-      reply = @client.chat_raw(
-        model: @model,
-        messages: messages,
-        allow_chat: true,
-        options: { temperature: @temperature }
-      )
-      reply_text = reply.dig("message", "content").to_s
-      @log.info { "reply: #{reply_text.size} chars" }
-      reply_text
+      @log.info { "ask (chat): \"#{question[0, 80]}#{question.size > 80 ? '...' : ''}\" (model=#{@model_name})" }
+      response_text = send_chat_request(repo_context, conversation_history, question)
+      @log.info { "reply: #{response_text.size} chars" }
+      response_text
     rescue Ollama::Error => e
       @log.warn { "chat_raw failed: #{e.message}, falling back to generate" }
       ask_via_generate(question, repo_context: repo_context)
@@ -30,11 +23,22 @@ module RepoContext
 
     def ask_via_generate(question, repo_context:)
       prompt = build_generate_prompt(repo_context, question)
-      out = @client.generate(prompt: prompt, schema: SIMPLE_RESPONSE_SCHEMA, model: @model)
-      out["response"].to_s
+      generate_response = @ollama_client.generate(prompt: prompt, schema: SIMPLE_RESPONSE_SCHEMA, model: @model_name)
+      generate_response["response"].to_s
     end
 
     private
+
+    def send_chat_request(repo_context, conversation_history, question)
+      messages = build_messages(repo_context, conversation_history, question)
+      chat_response = @ollama_client.chat_raw(
+        model: @model_name,
+        messages: messages,
+        allow_chat: true,
+        options: { temperature: @temperature }
+      )
+      chat_response.dig("message", "content").to_s
+    end
 
     def system_content(repo_context)
       <<~SYSTEM.strip

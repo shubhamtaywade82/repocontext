@@ -1,81 +1,144 @@
 # Repo Context
 
-Sinatra app that answers questions about a codebase using repo file contents and Ollama. Supports base context files, discovery agent, optional RAG (embeddings), and an **agentic code reviewer** with plan → act → observe → replan looping.
+Sinatra app that answers questions about a codebase using repo file contents and Ollama, and runs an **agentic code reviewer** (plan → act → observe → replan).
 
-## Layout
+---
 
+## Overview
+
+- **Chat**: Ask questions about the repo; context is built from reference files, optional embeddings, and a discovery agent that picks extra files.
+- **Code Review**: Agentic loop: planner chooses the next file to review, executor reviews it (e.g. Clean Ruby), findings are accumulated; when done, a summary is produced.
+
+---
+
+## Dependencies
+
+- **Ruby** ≥ 3.0
+- **Ollama** running and reachable (e.g. `ollama serve`). Pull a model: `ollama pull llama3.1:8b`
+- **Gems**: `sinatra`, `webrick`, `ollama-client`, `dotenv` (see Gemfile)
+
+### Optional
+
+- **Embeddings**: For RAG, set `EMBED_CONTEXT_ENABLED=true` and run `ollama pull nomic-embed-text`.
+
+---
+
+## Installation
+
+```bash
+git clone <repo>
+cd repocontext
+bundle install
 ```
-repocontext/
-├── bin/chat           # Run the server: bundle exec ruby bin/chat
-├── config/
-│   └── settings.rb    # Env-based config (REPO_ROOT, OLLAMA_*, CONTEXT_*, REVIEW_*, etc.)
-├── lib/
-│   ├── repocontext.rb
-│   └── repocontext/
-│       ├── version.rb
-│       ├── ollama_client_factory.rb
-│       ├── context_builder.rb   # Load files, discovery, embeddings, gather context
-│       ├── chat_service.rb      # ask via chat_raw / generate
-│       ├── review_state.rb      # State for agentic review loop
-│       ├── review_plan_step.rb  # Plan step (review_file / done)
-│       ├── review_step_result.rb
-│       ├── review_planner.rb    # LLM: next file or done
-│       ├── review_step_executor.rb  # LLM: review one file, return findings
-│       └── code_review_agent.rb # Agentic loop: plan → execute → observe until done
-├── views/
-│   └── index.erb      # Chat + Code Review tabs
-├── examples/
-│   └── ollama-client.rb  # Standalone Ollama usage examples
-├── chat_server.rb     # Sinatra app: routes and wiring
-├── Gemfile
-└── README.md
-```
+
+### Environment
+
+Create a `.env` (or export) for overrides:
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `REPO_CONTEXT_PATH` | Repo root for context | Project root |
+| `CONTEXT_FILES` | Comma-separated files loaded first | `README.md,Gemfile` |
+| `CONTEXT_MAX_CHARS` | Max context size | `35000` |
+| `OLLAMA_BASE_URL` | Ollama API URL | `http://192.168.1.4:11434` |
+| `OLLAMA_MODEL` | Model name | `llama3.1:8b` |
+| `OLLAMA_TEMPERATURE` | Chat temperature | `0.5` |
+| `OLLAMA_TIMEOUT` | Request timeout (s) | `60` |
+| `DISCOVERY_AGENT_ENABLED` | Use LLM to pick extra files | `true` |
+| `EMBED_CONTEXT_ENABLED` | Use embeddings for context | `false` |
+| `REVIEW_MAX_ITERATIONS` | Max code review loop steps | `15` |
+| `REVIEW_MAX_PATHS` | Max paths per review | `20` |
+| `REVIEW_FOCUS` | Default review focus | Clean Ruby focus string |
+| `LOG_LEVEL` | `debug` or `info` | `info` |
+
+---
 
 ## Run
 
 ```bash
-bundle install
 bundle exec ruby chat_server.rb
 # or
 bundle exec ruby bin/chat
 ```
 
-Then open http://localhost:4567 (or set `PORT=4568`).
+Open http://localhost:4567 (or set `PORT=4568`).
 
-## Config (env)
+---
 
-- **REPO_CONTEXT_PATH** – Repo root to build context from (default: this project).
-- **CONTEXT_FILES** – Comma-separated list of files to load first (default: `README.md,Gemfile`).
-- **CONTEXT_MAX_CHARS** – Max chars for context (default: 35000).
-- **DISCOVERY_AGENT_ENABLED** – Use LLM to pick extra files (default: true).
-- **OLLAMA_BASE_URL**, **OLLAMA_MODEL**, **OLLAMA_TEMPERATURE**, **OLLAMA_TIMEOUT** – Ollama client.
-- **EMBED_CONTEXT_ENABLED** – Enable RAG with embeddings (default: false). Requires `ollama pull nomic-embed-text` and **OLLAMA_EMBED_MODEL**.
-- **REVIEW_MAX_ITERATIONS** – Max steps in the code review loop (default: 15).
-- **REVIEW_MAX_PATHS** – Max file paths to consider per review (default: 20).
-- **REVIEW_FOCUS** – Default review focus (e.g. Clean Ruby, naming, single responsibility).
-- **LOG_LEVEL** – `debug` or `info` (default: info).
+## Usage
 
-## Code Review Agent
+### Chat
 
-The **Code Review** tab runs an agentic loop:
+1. Open the **Chat** tab.
+2. Type a question about the codebase (e.g. "Where is the Ollama client configured?").
+3. Response is based on repo context (reference files + discovery/embeddings).
 
-1. **Plan** – LLM chooses the next file to review (or signals done).
-2. **Act** – LLM reviews that file against the focus (e.g. Clean Ruby) and returns findings.
-3. **Observe** – Findings and a short observation are added to state.
-4. **Replan** – Planner sees updated state and picks the next file (or done).
-5. When no files remain, the agent runs a **summary** step and returns findings + summary.
+**Example**: "What does the context builder load first?" → Answer will refer to `REFERENCE_FILES` and the flow in `ContextBuilder#gather`.
 
-- **POST /api/review** – Body: `{ "paths": ["lib/foo.rb"], "focus": "optional" }`. Returns `{ findings, summary, reviewed_paths, iterations }`.
-- **POST /api/review/stream** – Same body; streams events: `status`, `review_file`, `findings`, `summary`, `done`, `error`.
+### Code Review
 
-Leave `paths` empty to use the repo’s discovered candidate paths (same as discovery agent).
+1. Open the **Code Review** tab.
+2. Optionally set **Paths** (comma-separated, e.g. `lib/repocontext/chat_service.rb`) or leave empty to use discovered paths.
+3. Optionally set **Focus** (e.g. "naming and method length") or use the default.
+4. Click **Run code review**.
 
-## Examples
+**Example output**: Findings stream per file (file, line, rule, message, severity); at the end a short summary with priorities and next steps.
 
-Run Ollama client examples (no server):
+### API
+
+**POST /api/chat**
+
+- Body: `{ "message": "your question", "history": [] }`
+- Returns: `{ "response": "...", "history": [...] }`
+
+**POST /api/chat/stream**
+
+- Same body; NDJSON stream: `status`, `done` (with `response`, `history`), `error`.
+
+**POST /api/review**
+
+- Body: `{ "paths": ["lib/foo.rb"], "focus": "optional" }`
+- Returns: `{ "findings": [...], "summary": "...", "reviewed_paths": [...], "iterations": N }`
+
+**POST /api/review/stream**
+
+- Same body; NDJSON stream: `status`, `review_file`, `findings`, `summary`, `done`, `error`.
+
+---
+
+## Project layout
+
+```
+repocontext/
+├── bin/chat              # Server entrypoint
+├── config/settings.rb    # Env-based config
+├── lib/
+│   ├── repocontext.rb
+│   └── repocontext/
+│       ├── version.rb
+│       ├── ollama_client_factory.rb   # Cached Ollama client
+│       ├── context_builder.rb         # Gather repo context
+│       ├── chat_service.rb            # Chat with Ollama
+│       ├── review_state.rb            # Review loop state
+│       ├── review_plan_step.rb        # Plan step (review_file / done)
+│       ├── file_review_outcome.rb     # Result of one file review
+│       ├── review_planner.rb          # LLM: next file or done
+│       ├── review_step_executor.rb    # LLM: review file, summary
+│       └── code_review_agent.rb       # Agentic review loop
+├── views/index.erb       # Chat + Code Review UI
+├── chat_server.rb        # Sinatra routes and helpers
+├── Gemfile
+└── README.md
+```
+
+---
+
+## Examples (no server)
+
+Run Ollama client examples (planner, thinking, schema, multi-turn):
 
 ```bash
 bundle exec ruby examples/ollama-client.rb
 ```
 
-Override Ollama URL/model via env as needed.
+Set `OLLAMA_BASE_URL` and `OLLAMA_MODEL` as needed.
