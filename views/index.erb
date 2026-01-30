@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Repo Chat Assistant</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .header {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #334155;
+      background: #1e293b;
+      font-size: 0.875rem;
+    }
+    .header strong { color: #94a3b8; }
+    .header code { background: #334155; padding: 0.125rem 0.375rem; border-radius: 4px; font-size: 0.8125rem; }
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .message {
+      max-width: 85%;
+      padding: 0.75rem 1rem;
+      border-radius: 0.75rem;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .message.user {
+      align-self: flex-end;
+      background: #2563eb;
+      color: #fff;
+    }
+    .message.assistant {
+      align-self: flex-start;
+      background: #334155;
+      border: 1px solid #475569;
+    }
+    .message .role {
+      display: block;
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      opacity: 0.85;
+      margin-bottom: 0.35rem;
+      font-weight: 600;
+    }
+    .message .body { display: block; }
+    .message.user .role { color: rgba(255,255,255,0.9); }
+    .input-area {
+      padding: 1rem;
+      border-top: 1px solid #334155;
+      background: #1e293b;
+    }
+    .input-row {
+      display: flex;
+      gap: 0.5rem;
+      max-width: 48rem;
+      margin: 0 auto;
+    }
+    #input {
+      flex: 1;
+      padding: 0.625rem 0.875rem;
+      border: 1px solid #475569;
+      border-radius: 0.5rem;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-size: 0.9375rem;
+      resize: none;
+      min-height: 44px;
+      max-height: 160px;
+    }
+    #input:focus {
+      outline: none;
+      border-color: #64748b;
+    }
+    #input::placeholder { color: #64748b; }
+    #send {
+      padding: 0.625rem 1.25rem;
+      border: none;
+      border-radius: 0.5rem;
+      background: #2563eb;
+      color: #fff;
+      font-weight: 500;
+      cursor: pointer;
+      font-size: 0.9375rem;
+    }
+    #send:hover { background: #1d4ed8; }
+    #send:disabled { opacity: 0.6; cursor: not-allowed; }
+    .status {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      margin-top: 0.5rem;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    .status.error { color: #f87171; }
+    .status .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid #334155;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .progress-steps {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.25rem;
+      margin-top: 0.25rem;
+    }
+    .progress-steps .step {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #334155;
+      transition: background 0.2s;
+    }
+    .progress-steps .step.active { background: #2563eb; }
+    .progress-steps .step.done { background: #64748b; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    Repo Chat Assistant — answers questions using repo context and Ollama. Set <code>REPO_CONTEXT_PATH</code>, <code>CONTEXT_FILES</code>, <code>OLLAMA_BASE_URL</code> as needed.
+  </header>
+  <div class="messages" id="messages"></div>
+  <div class="input-area">
+    <div class="input-row">
+      <textarea id="input" placeholder="Ask about the codebase..." rows="1"></textarea>
+      <button type="button" id="send">Send</button>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="progress-steps" id="progressSteps" style="display: none;">
+      <span class="step" id="step1" title="Gathering context"></span>
+      <span class="step" id="step2" title="Asking Ollama"></span>
+    </div>
+  </div>
+  <script>
+    const messagesEl = document.getElementById('messages');
+    const inputEl = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+    const statusEl = document.getElementById('status');
+    const progressStepsEl = document.getElementById('progressSteps');
+    const step1 = document.getElementById('step1');
+    const step2 = document.getElementById('step2');
+
+    function setStatus(text, isError) {
+      statusEl.innerHTML = text ? '<span class="spinner"></span>' + escapeHtml(text) : '';
+      statusEl.className = 'status' + (isError ? ' error' : '');
+      statusEl.style.display = text ? 'flex' : 'none';
+      progressStepsEl.style.display = text && !isError ? 'flex' : 'none';
+    }
+
+    function setProgressStep(activeIndex, statusText) {
+      progressStepsEl.style.display = 'flex';
+      statusEl.style.display = 'flex';
+      statusEl.innerHTML = statusText ? '<span class="spinner"></span>' + escapeHtml(statusText) : '';
+      step1.className = 'step' + (activeIndex > 0 ? ' done' : ' active');
+      step2.className = 'step' + (activeIndex > 1 ? ' done' : activeIndex === 1 ? ' active' : '');
+    }
+
+    function appendMessage(role, content) {
+      const div = document.createElement('div');
+      div.className = 'message ' + role;
+      const label = role === 'user' ? 'You' : 'Assistant';
+      div.innerHTML = '<span class="role">' + escapeHtml(label) + '</span><span class="body">' + escapeHtml(content) + '</span>';
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    let conversationHistory = [];
+
+    async function sendMessage() {
+      const text = inputEl.value.trim();
+      if (!text) return;
+      inputEl.value = '';
+      appendMessage('user', text);
+      sendBtn.disabled = true;
+      setProgressStep(0, 'Gathering context…');
+      try {
+        const res = await fetch('/api/chat/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, history: conversationHistory })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setStatus(data.error || 'Request failed', true);
+          appendMessage('assistant', data.error || 'Something went wrong.');
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const data = JSON.parse(line);
+              if (data.event === 'status') {
+                const isOllama = data.message && data.message.includes('Ollama');
+                setProgressStep(isOllama ? 1 : 0, data.message || '');
+              } else if (data.event === 'done') {
+                setStatus('');
+                progressStepsEl.style.display = 'none';
+                appendMessage('assistant', data.response || '');
+                if (Array.isArray(data.history)) conversationHistory = data.history;
+              } else if (data.event === 'error') {
+                setStatus(data.error || 'Error', true);
+                appendMessage('assistant', data.error || 'Something went wrong.');
+              }
+            } catch (_) {}
+          }
+        }
+        if (buffer.trim()) {
+          try {
+            const data = JSON.parse(buffer);
+            if (data.event === 'done') {
+              setStatus('');
+              progressStepsEl.style.display = 'none';
+              appendMessage('assistant', data.response || '');
+              if (Array.isArray(data.history)) conversationHistory = data.history;
+            } else if (data.event === 'error') {
+              setStatus(data.error || 'Error', true);
+              appendMessage('assistant', data.error || 'Something went wrong.');
+            }
+          } catch (_) {}
+        }
+        setStatus('');
+        progressStepsEl.style.display = 'none';
+      } catch (e) {
+        setStatus('Network error: ' + e.message, true);
+        appendMessage('assistant', 'Could not reach the server.');
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+  </script>
+</body>
+</html>

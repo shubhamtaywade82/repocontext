@@ -1,0 +1,5 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+server = File.expand_path("../chat_server.rb", __dir__)
+exec(Gem.ruby, server, *ARGV)

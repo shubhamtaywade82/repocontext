@@ -1,0 +1,7 @@
+/.bundle/
+/vendor/bundle
+*.gem
+.env
+.env.local
+*.log
+/.ruby-version
