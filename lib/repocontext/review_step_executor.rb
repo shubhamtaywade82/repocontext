@@ -28,20 +28,19 @@ module RepoContext
       @client = client
       @model = model
       @log = logger
-      @log = logger
     end
 
     def execute(plan_step, file_content:, path:)
       prompt = build_review_prompt(plan_step, file_content, path)
-      out = @client.generate(prompt: prompt, schema: FINDINGS_SCHEMA, model: @model)
-      findings = normalize_findings(Array(out["findings"]), path)
-      observation = out["observation"].to_s.strip
+      plan_response = @client.generate(prompt: prompt, schema: FINDINGS_SCHEMA, model: @model)
+      findings = normalize_findings(Array(plan_response["findings"]), path)
+      observation = plan_response["observation"].to_s.strip
       observation = nil if observation.empty?
       @log.info { "executor: #{findings.size} finding(s) for #{path}" }
-      ReviewStepResult.new(findings: findings, observation: observation, reviewed_path: path)
+      FileReviewOutcome.new(findings: findings, observation: observation, reviewed_path: path)
     rescue Ollama::Error => e
       @log.warn { "executor failed for #{path}: #{e.message}" }
-      ReviewStepResult.new(
+      FileReviewOutcome.new(
         findings: [],
         observation: "Review failed: #{e.message}",
         reviewed_path: path
@@ -49,15 +48,17 @@ module RepoContext
     end
 
     def execute_summary(state)
+      return FileReviewOutcome.with_no_findings(reviewed_path: nil) if state.findings.empty? && state.reviewed_paths.empty?
+
       prompt = build_summary_prompt(state)
-      out = @client.generate(prompt: prompt, schema: SUMMARY_SCHEMA, model: @model)
-      observation = out["summary"].to_s.strip
-      observation = "No summary produced." if observation.empty?
+      plan_response = @client.generate(prompt: prompt, schema: SUMMARY_SCHEMA, model: @model)
+      summary_text = plan_response["summary"].to_s.strip
+      summary_text = "No summary produced." if summary_text.empty?
       @log.info { "executor: summary produced" }
-      ReviewStepResult.new(findings: [], observation: observation, reviewed_path: nil)
+      FileReviewOutcome.new(findings: [], observation: summary_text, reviewed_path: nil)
     rescue Ollama::Error => e
       @log.warn { "summary failed: #{e.message}" }
-      ReviewStepResult.new(findings: [], observation: "Summary failed: #{e.message}", reviewed_path: nil)
+      FileReviewOutcome.new(findings: [], observation: "Summary failed: #{e.message}", reviewed_path: nil)
     end
 
     private

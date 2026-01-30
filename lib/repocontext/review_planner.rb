@@ -24,25 +24,37 @@ module RepoContext
     end
 
     def next_step(state, candidate_paths)
-      return ReviewPlanStep.new(action: ReviewPlanStep::DONE, reasoning: "No files to review") if candidate_paths.empty?
+      return done_step("No files to review") if candidate_paths.empty?
 
-      remaining = state.remaining_candidates(candidate_paths).to_a
-      return ReviewPlanStep.new(action: ReviewPlanStep::DONE, reasoning: "All candidates reviewed") if remaining.empty?
+      remaining_paths = state.remaining_candidates(candidate_paths)
+      return done_step("All candidates reviewed") if remaining_paths.empty?
 
-      prompt = build_plan_prompt(state, remaining)
-      out = @client.generate(prompt: prompt, schema: PLAN_SCHEMA, model: @model)
-      action = out["next_action"].to_s.strip
-      action = ReviewPlanStep::DONE if out["done"] == true
-      target = out["target"].to_s.strip
-      target = nil if target.empty?
-      @log.info { "planner: action=#{action}, target=#{target}" }
-      ReviewPlanStep.new(action: action, target: target, reasoning: out["reasoning"].to_s.strip)
+      plan_response = request_next_action(state, remaining_paths)
+      build_plan_step(plan_response, remaining_paths)
     rescue Ollama::Error => e
       @log.warn { "planner failed: #{e.message}, defaulting to first remaining file" }
-      ReviewPlanStep.new(action: ReviewPlanStep::REVIEW_FILE, target: remaining.first, reasoning: "fallback")
+      ReviewPlanStep.new(action: ReviewPlanStep::REVIEW_FILE, target: remaining_paths.first, reasoning: "fallback")
     end
 
     private
+
+    def done_step(reasoning)
+      ReviewPlanStep.new(action: ReviewPlanStep::DONE, reasoning: reasoning)
+    end
+
+    def request_next_action(state, remaining_paths)
+      prompt = build_plan_prompt(state, remaining_paths)
+      @client.generate(prompt: prompt, schema: PLAN_SCHEMA, model: @model)
+    end
+
+    def build_plan_step(plan_response, remaining_paths)
+      action = plan_response["next_action"].to_s.strip
+      action = ReviewPlanStep::DONE if plan_response["done"] == true
+      target = plan_response["target"].to_s.strip
+      target = nil if target.empty?
+      @log.info { "planner: action=#{action}, target=#{target}" }
+      ReviewPlanStep.new(action: action, target: target, reasoning: plan_response["reasoning"].to_s.strip)
+    end
 
     def build_plan_prompt(state, remaining_paths)
       <<~PROMPT

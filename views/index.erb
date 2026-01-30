@@ -186,6 +186,20 @@
     }
     .review-input #runReview:hover { background: #15803d; }
     .review-input #runReview:disabled { opacity: 0.6; cursor: not-allowed; }
+    .review-status-wrap { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; min-height: 1.5rem; }
+    .review-status-wrap.in-progress .in-progress-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #94a3b8;
+      background: #334155;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+    }
+    .review-status-wrap .in-progress-badge { display: none; }
+    .review-status-wrap .status-text { flex: 1; }
     .review-results {
       flex: 1;
       overflow-y: auto;
@@ -244,7 +258,10 @@
       <input type="text" id="reviewFocus" placeholder="e.g. Clean Ruby, naming, single responsibility">
       <button type="button" id="runReview">Run code review</button>
     </div>
-    <div class="status" id="reviewStatus"></div>
+    <div class="review-status-wrap" id="reviewStatusWrap">
+      <span class="in-progress-badge"><span class="spinner"></span> In progress</span>
+      <div class="status status-text" id="reviewStatus"></div>
+    </div>
     <div class="review-results" id="reviewResults"></div>
   </section>
   <script>
@@ -382,10 +399,19 @@
     const reviewStatusEl = document.getElementById('reviewStatus');
     const reviewResultsEl = document.getElementById('reviewResults');
 
+    const reviewStatusWrapEl = document.getElementById('reviewStatusWrap');
+
     function setReviewStatus(text, isError) {
-      reviewStatusEl.innerHTML = text ? '<span class="spinner"></span>' + escapeHtml(text) : '';
-      reviewStatusEl.className = 'status' + (isError ? ' error' : '');
+      reviewStatusEl.innerHTML = text ? escapeHtml(text) : '';
+      reviewStatusEl.className = 'status status-text' + (isError ? ' error' : '');
       reviewStatusEl.style.display = text ? 'flex' : 'none';
+      if (text && !isError) {
+        reviewStatusWrapEl.classList.add('in-progress');
+        reviewStatusWrapEl.style.display = 'flex';
+      } else {
+        reviewStatusWrapEl.classList.remove('in-progress');
+        reviewStatusWrapEl.style.display = text ? 'flex' : 'none';
+      }
     }
 
     async function runReview() {

@@ -3,102 +3,89 @@
 module RepoContext
   class CodeReviewAgent
     def initialize(client:, model:, context_builder:, logger: Settings.logger)
-      @client = client
-      @model = model
-      @context_builder = context_builder
+      @ollama_client = client
+      @model_name = model
+      @repo_context_builder = context_builder
       @log = logger
       @planner = ReviewPlanner.new(client: client, model: model, logger: logger)
       @executor = ReviewStepExecutor.new(client: client, model: model, logger: logger)
     end
 
-    def run(request_paths: [], focus: Settings::REVIEW_FOCUS)
-      candidates = request_paths.any? ? request_paths : @context_builder.candidate_paths
-      candidates = candidates.first(Settings::REVIEW_MAX_PATHS)
-      state = ReviewState.new(request_paths: candidates, focus: focus)
+    def run(request_paths: [], focus: Settings::REVIEW_FOCUS, &event_callback)
+      candidate_path_list = resolve_candidate_paths(request_paths)
+      review_state = ReviewState.new(request_paths: candidate_path_list, focus: focus)
 
       Settings::REVIEW_MAX_ITERATIONS.times do
-        plan = @planner.next_step(state, candidates)
-        if plan.done?
-          result = @executor.execute_summary(state)
-          state = state.append(result)
-          break state
+        yield_event(event_callback, :plan, review_state.iteration, nil)
+
+        plan_step = @planner.next_step(review_state, candidate_path_list)
+        if plan_step.done?
+          review_state = run_summary_and_finish(review_state, event_callback)
+          yield_event(event_callback, :done, review_state.iteration, review_state)
+          return review_state
         end
 
-        next unless plan.review_file? && plan.target
+        next unless plan_step.review_file? && plan_step.target
 
-        path = resolve_path(plan.target, candidates)
-        unless path
-          @log.warn { "planner target not in candidates: #{plan.target}" }
+        file_path = resolve_file_path(plan_step.target, candidate_path_list)
+        unless file_path
+          @log.warn { "planner target not in candidates: #{plan_step.target}" }
           next
         end
 
-        file_content = read_file(path)
+        yield_event(event_callback, :review_file, review_state.iteration, file_path)
+
+        file_content = read_file_content(file_path)
         unless file_content
-          @log.warn { "could not read file: #{path}" }
-          state = state.append(ReviewStepResult.empty(reviewed_path: path))
+          @log.warn { "could not read file: #{file_path}" }
+          review_state = review_state.append(FileReviewOutcome.with_no_findings(reviewed_path: file_path))
           next
         end
 
-        result = @executor.execute(plan, file_content: file_content, path: path)
-        state = state.append(result)
+        outcome = @executor.execute(plan_step, file_content: file_content, path: file_path)
+        review_state = review_state.append(outcome)
+        yield_event(event_callback, :review_done, review_state.iteration, outcome)
       end
 
-      state
+      yield_event(event_callback, :done, review_state.iteration, review_state)
+      review_state
     end
 
     def run_with_events(request_paths: [], focus: Settings::REVIEW_FOCUS, &block)
-      candidates = request_paths.any? ? request_paths : @context_builder.candidate_paths
-      candidates = candidates.first(Settings::REVIEW_MAX_PATHS)
-      state = ReviewState.new(request_paths: candidates, focus: focus)
-
-      Settings::REVIEW_MAX_ITERATIONS.times do
-        yield :plan, state.iteration, nil
-        plan = @planner.next_step(state, candidates)
-        if plan.done?
-          yield :summarize, state.iteration, nil
-          result = @executor.execute_summary(state)
-          state = state.append(result)
-          yield :summary_done, state.iteration, result
-          yield :done, state.iteration, state
-          return state
-        end
-
-        next unless plan.review_file? && plan.target
-
-        path = resolve_path(plan.target, candidates)
-        unless path
-          @log.warn { "planner target not in candidates: #{plan.target}" }
-          next
-        end
-
-        yield :review_file, state.iteration, path
-        file_content = read_file(path)
-        unless file_content
-          @log.warn { "could not read file: #{path}" }
-          state = state.append(ReviewStepResult.empty(reviewed_path: path))
-          next
-        end
-
-        result = @executor.execute(plan, file_content: file_content, path: path)
-        state = state.append(result)
-        yield :review_done, state.iteration, result
-      end
-
-      yield :done, state.iteration, state
-      state
+      run(request_paths: request_paths, focus: focus, &block)
     end
 
     private
 
-    def resolve_path(target, candidates)
-      return target if candidates.include?(target)
-      candidates.find { |c| c == target || c.end_with?("/#{target}") || File.basename(c) == target }
+    def resolve_candidate_paths(request_paths)
+      path_list = request_paths.any? ? request_paths : @repo_context_builder.candidate_paths
+      path_list.first(Settings::REVIEW_MAX_PATHS)
     end
 
-    def read_file(path)
-      full = File.join(Settings::REPO_ROOT, path)
-      return nil unless File.file?(full)
-      File.read(full)
+    def run_summary_and_finish(review_state, event_callback)
+      yield_event(event_callback, :summarize, review_state.iteration, nil)
+      summary_outcome = @executor.execute_summary(review_state)
+      new_state = review_state.append(summary_outcome)
+      yield_event(event_callback, :summary_done, new_state.iteration, summary_outcome)
+      new_state
+    end
+
+    def yield_event(callback, event, iteration, payload)
+      callback&.call(event, iteration, payload)
+    end
+
+    def resolve_file_path(target_path, candidate_path_list)
+      return target_path if candidate_path_list.include?(target_path)
+      candidate_path_list.find do |candidate_path|
+        candidate_path == target_path ||
+          candidate_path.end_with?("/#{target_path}") ||
+          File.basename(candidate_path) == target_path
+      end
+    end
+
+    def read_file_content(relative_path)
+      absolute_path = File.join(Settings::REPO_ROOT, relative_path)
+      File.file?(absolute_path) ? File.read(absolute_path) : nil
     end
   end
 end

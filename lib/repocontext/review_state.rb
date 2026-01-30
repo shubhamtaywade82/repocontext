@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "set"
-
 module RepoContext
   class ReviewState
     attr_reader :request_paths, :focus, :reviewed_paths, :findings, :iteration, :observations
@@ -15,10 +13,10 @@ module RepoContext
       @observations = observations.dup.freeze
     end
 
-    def append(step_result)
-      new_reviewed = step_result.reviewed_path ? (reviewed_paths + [step_result.reviewed_path]) : reviewed_paths
-      new_findings = findings + step_result.findings
-      new_observations = observations + [step_result.observation].compact
+    def append(outcome)
+      new_reviewed = outcome.reviewed_path ? (reviewed_paths + [outcome.reviewed_path]) : reviewed_paths
+      new_findings = findings + outcome.findings
+      new_observations = observations + [outcome.observation].compact
       self.class.new(
         request_paths: request_paths,
         focus: focus,
@@ -29,8 +27,8 @@ module RepoContext
       )
     end
 
-    def remaining_candidates(all_paths)
-      Set.new(all_paths) - Set.new(reviewed_paths)
+    def remaining_candidates(candidate_paths)
+      (Array(candidate_paths) - reviewed_paths).uniq
     end
 
     def summary_for_planner

@@ -22,18 +22,18 @@ module RepoContext
     end
 
     def gather(question)
-      base = load_repo_context
-      used_size = base.size
-      existing = base_loaded_paths
+      base_context = load_repo_context
+      used_chars = base_context.size
+      loaded_paths = base_loaded_paths
 
-      base = append_embed_context(base, question, used_size) if Settings::EMBED_CONTEXT_ENABLED
-      used_size = base.size
+      base_context = append_embed_context(base_context, question, used_chars) if Settings::EMBED_CONTEXT_ENABLED
+      used_chars = base_context.size
 
-      base, existing = append_boost_paths(base, question, used_size, existing)
-      used_size = base.size
+      base_context, loaded_paths = append_boost_paths(base_context, question, used_chars, loaded_paths)
+      used_chars = base_context.size
 
-      base = append_discovery_context(base, question, existing) if Settings::DISCOVERY_AGENT_ENABLED
-      base
+      base_context = append_discovery_context(base_context, question, loaded_paths) if Settings::DISCOVERY_AGENT_ENABLED
+      base_context
     end
 
     private
@@ -65,13 +65,13 @@ module RepoContext
     end
 
     def load_repo_context(files = Settings::REFERENCE_FILES, max_chars: Settings::CONTEXT_MAX_CHARS)
-      loaded = load_files_into_context(files, max_chars: max_chars)
-      if loaded.empty? && files == Settings::REFERENCE_FILES
+      loaded_chunks = load_files_into_context(files, max_chars: max_chars)
+      if loaded_chunks.empty? && files == Settings::REFERENCE_FILES
         @log.info { "repo context: no #{Settings::REFERENCE_FILES.join(',')} in #{Settings::REPO_ROOT}, trying fallback: #{Settings::FALLBACK_CONTEXT_FILES.join(',')}" }
         return load_repo_context(Settings::FALLBACK_CONTEXT_FILES, max_chars: max_chars)
       end
-      @log.info { "repo context: #{loaded.size} file(s), #{loaded.join.size} chars total" }
-      loaded.join("\n\n")
+      @log.info { "repo context: #{loaded_chunks.size} file(s), #{loaded_chunks.join.size} chars total" }
+      loaded_chunks.join("\n\n")
     end
 
     def candidate_paths_for_discovery
@@ -239,14 +239,19 @@ module RepoContext
       ["#{base}\n\n#{boost_loaded.join("\n\n")}", new_existing]
     end
 
-    def append_discovery_context(base, question, existing)
-      candidates = candidate_paths_for_discovery
-      extra_paths = discovery_agent_pick_paths(question, candidates)
-      remaining = Settings::CONTEXT_MAX_CHARS - base.size
-      extra = load_files_into_context(extra_paths, existing_paths: existing, max_chars: remaining)
-      return base if extra.empty?
-      @log.info { "context after discovery: #{base.size + extra.join.size} chars" }
-      "#{base}\n\n#{extra.join("\n\n")}"
+    def append_discovery_context(base_context, question, already_loaded_paths)
+      candidate_path_list = candidate_paths_for_discovery
+      return base_context if candidate_path_list.empty?
+
+      chosen_paths = discovery_agent_pick_paths(question, candidate_path_list)
+      return base_context if chosen_paths.empty?
+
+      remaining_chars = Settings::CONTEXT_MAX_CHARS - base_context.size
+      discovery_chunks = load_files_into_context(chosen_paths, existing_paths: already_loaded_paths, max_chars: remaining_chars)
+      return base_context if discovery_chunks.empty?
+
+      @log.info { "context after discovery: #{base_context.size + discovery_chunks.join.size} chars" }
+      "#{base_context}\n\n#{discovery_chunks.join("\n\n")}"
     end
   end
 end
