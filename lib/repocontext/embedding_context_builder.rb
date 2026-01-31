@@ -11,7 +11,7 @@ module RepoContext
       @repo_root = repo_root
       @candidate_paths_source = candidate_paths_source
       @log = logger
-      @index_cache = { mutex: Mutex.new, index: nil, repo: nil }
+      @store = VectorStore.new(repo_root: repo_root, logger: logger)
     end
 
     def context_for_question(question, max_chars:)
@@ -45,47 +45,69 @@ module RepoContext
     end
 
     def build_index
-      @index_cache[:mutex].synchronize do
-        return @index_cache[:index] if @index_cache[:index] && @index_cache[:repo] == @repo_root
-
-        @log.info { "building embedding index (model=#{Settings::OLLAMA_EMBED_MODEL})..." }
-        chunks = chunk_repo
-        index = index_chunks_with_embeddings(chunks)
-        @index_cache[:index] = index
-        @index_cache[:repo] = @repo_root
-        @log.info { "embedding index built: #{index.size} chunks" }
-        index
-      end
-    end
-
-    def index_chunks_with_embeddings(chunks)
-      chunks.map do |c|
-        vec = embed_string(c[:text])
-        { path: c[:path], text: c[:text], embedding: vec }
-      end
-    end
-
-    def chunk_repo
-      paths = @candidate_paths_source.is_a?(Array) ? @candidate_paths_source : @candidate_paths_source.call
-      chunks = []
-      paths.each do |rel_path|
-        break if chunks.size >= Settings::EMBED_MAX_CHUNKS
-
-        full_path = File.join(@repo_root, rel_path)
-        next unless File.file?(full_path)
-
-        append_chunks_from_file(full_path, rel_path, chunks)
-      end
+      @log.info { "building/loading embedding index..." }
+      chunks = ChunkAndStore.new(
+        store: @store,
+        repo_root: @repo_root,
+        paths_source: @candidate_paths_source,
+        builder: self,
+        logger: @log
+      ).call
+      @log.info { "embedding index ready: #{chunks.size} chunks" }
       chunks
     end
 
-    def append_chunks_from_file(full_path, rel_path, chunks)
-      content = File.read(full_path)
-      chunk_text(content, rel_path).each do |c|
-        chunks << c
-        return if chunks.size >= Settings::EMBED_MAX_CHUNKS
+    class ChunkAndStore
+      def initialize(store:, repo_root:, paths_source:, builder:, logger:)
+        @store = store
+        @repo_root = repo_root
+        @paths_source = paths_source
+        @builder = builder
+        @log = logger
+      end
+
+      def call
+        paths = @paths_source.is_a?(Array) ? @paths_source : @paths_source.call
+        all_chunks = []
+
+        paths.each do |rel_path|
+          full_path = File.join(@repo_root, rel_path)
+          next unless File.file?(full_path)
+
+          mtime = File.mtime(full_path).to_i
+          stored_mtime = @store.stored_mtime(rel_path)
+
+          if stored_mtime == mtime
+            @log.debug { "verifying #{rel_path}: unchanged" }
+            stored_chunks = @store.find_chunks(rel_path)
+            if stored_chunks.any?
+               all_chunks.concat(stored_chunks)
+               next
+            end
+          end
+
+          @log.info { "indexing #{rel_path} (new/modified)..." }
+          file_chunks = []
+          content = File.read(full_path)
+
+          @builder.send(:chunk_text, content, rel_path).each do |c|
+            vec = @builder.send(:embed_string, c[:text])
+            next if vec.empty?
+            c[:embedding] = vec
+            file_chunks << c
+          end
+
+          if file_chunks.any?
+            @store.upsert(rel_path, mtime, file_chunks)
+            all_chunks.concat(file_chunks)
+          end
+        end
+        all_chunks
       end
     end
+
+
+    # Note: embed_string and chunk_text are private, accessed via send() by ChunkAndStore
 
     def chunk_text(text, path)
       chunk_size = Settings::EMBED_CHUNK_SIZE
@@ -170,3 +192,4 @@ module RepoContext
     end
   end
 end
+

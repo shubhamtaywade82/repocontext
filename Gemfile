@@ -9,6 +9,8 @@ gem "ollama-client", "~> 0.2"
 gem "sinatra", "~> 3.0"
 gem "webrick"
 gem "puma"
+gem "sqlite3"
+
 
 
 group :test do

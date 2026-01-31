@@ -4,6 +4,8 @@ require "sinatra/base"
 require "json"
 require "webrick"
 require_relative "../repocontext"
+require_relative "vector_store"
+
 
 module RepoContext
   class Server < Sinatra::Base
