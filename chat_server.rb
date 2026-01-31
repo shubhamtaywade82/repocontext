@@ -2,7 +2,7 @@
 # Run: bundle exec ruby chat_server.rb  then open http://localhost:<PORT>
 # PORT=4568 to use a different port. LOG_LEVEL=debug for more detail.
 # Context: REPO_CONTEXT_PATH, CONTEXT_FILES, CONTEXT_MAX_CHARS, DISCOVERY_AGENT_ENABLED.
-# Embeddings: EMBED_CONTEXT_ENABLED=true, OLLAMA_EMBED_MODEL=nomic-embed-text (ollama pull nomic-embed-text).
+# Embeddings: EMBED_CONTEXT_ENABLED=true, OLLAMA_EMBED_MODEL=nomic-embed-text:v1.5 (ollama pull nomic-embed-text:v1.5).
 
 $LOAD_PATH.unshift(File.expand_path("lib", __dir__))
 require "repocontext/server"

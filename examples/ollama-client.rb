@@ -8,7 +8,7 @@ require "json"
 ENV["OLLAMA_MODEL"] = "llama3.1:8b-instruct-q4_K_M"
 ENV["OLLAMA_TEMPERATURE"] = "0.5"
 ENV["OLLAMA_TIMEOUT"] = "60"
-BASE_URL = ENV.fetch("OLLAMA_BASE_URL", "http://192.168.1.4:11434")
+BASE_URL = ENV.fetch("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = ENV.fetch("OLLAMA_MODEL", "llama3.1:8b-instruct-q4_K_M")
 OLLAMA_TEMPERATURE = ENV.fetch("OLLAMA_TEMPERATURE", 0.5)
 OLLAMA_TIMEOUT = ENV.fetch("OLLAMA_TIMEOUT", 60)

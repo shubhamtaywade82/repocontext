@@ -1,4 +1,7 @@
 # frozen_string_literal: true
+require "net/http"
+require "uri"
+require "json"
 
 module RepoContext
   # Single responsibility: build embedding index and retrieve relevant context for a question.
@@ -20,11 +23,12 @@ module RepoContext
       index = build_index
       return "" if index.empty?
 
-      query_vec = @client.embeddings.embed(model: Settings::OLLAMA_EMBED_MODEL, input: question.to_s.strip)
-      top_chunks = top_chunks_by_similarity(index, query_vec)
+      vec = embed_string(question.to_s.strip)
+      top_chunks = top_chunks_by_similarity(index, vec)
       assemble_context(top_chunks, max_chars)
-    rescue Ollama::Error => e
-      @log.warn { "embed context failed: #{e.message}" }
+    rescue StandardError => e
+      @log.warn { "embed context failed (#{e.class}): #{e.message}" }
+      @log.warn { e.backtrace.join("\n") }
       ""
     end
 
@@ -43,7 +47,7 @@ module RepoContext
         @log.info { "building embedding index (model=#{Settings::OLLAMA_EMBED_MODEL})..." }
         chunks = chunk_repo
         index = chunks.map do |c|
-          vec = @client.embeddings.embed(model: Settings::OLLAMA_EMBED_MODEL, input: c[:text])
+          vec = embed_string(c[:text])
           { path: c[:path], text: c[:text], embedding: vec }
         end
         @index_cache[:index] = index
@@ -116,6 +120,36 @@ module RepoContext
 
       @log.info { "embed context: #{parts.size} chunks, #{total} chars" }
       parts.join("\n\n")
+    end
+
+    def embed_string(text)
+      @log.info { "DEBUG: embed_string called with '#{text[0,20]}...'" }
+      uri = URI.parse("#{Settings::OLLAMA_BASE_URL}/api/embed")
+      payload = {
+        model: Settings::OLLAMA_EMBED_MODEL,
+        input: text
+      }
+
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = (uri.scheme == "https")
+      http.read_timeout = Settings::OLLAMA_TIMEOUT
+
+      request = Net::HTTP::Post.new(uri.path, "Content-Type" => "application/json")
+      request.body = payload.to_json
+
+      response = http.request(request)
+      unless response.is_a?(Net::HTTPSuccess)
+        @log.warn { "embed request failed: #{response.code} #{response.message}" }
+        return []
+      end
+
+      json = JSON.parse(response.body)
+      # /api/embed returns "embeddings": [[...]] for single string
+      # fallback to "embedding" just in case mechanism differs
+      json["embeddings"]&.first || json["embedding"] || []
+    rescue StandardError => e
+      @log.warn { "embed request exception: #{e.message}" }
+      []
     end
   end
 end

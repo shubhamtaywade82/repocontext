@@ -43,7 +43,7 @@ module RepoContext
       end
 
       def embedding_context_builder
-        @embedding_context_builder ||= RepoContext::EmbeddingContextBuilder.new(
+        @embedding_context_builder ||= RepoContext::NONEXISTENT_CLASS_SHOULD_CRASH.new(
           client: ollama_client,
           repo_root: RepoContext::Settings::REPO_ROOT,
           candidate_paths_source: -> { discovery_path_selector.candidate_paths },

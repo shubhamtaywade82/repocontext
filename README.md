@@ -46,7 +46,8 @@ Agentic loop: the planner chooses the next file to review, the executor reviews 
 
 ### Embeddings (on by default)
 
-- RAG uses embeddings to add relevant chunks per question. Run `ollama pull nomic-embed-text` before using.
+- RAG uses embeddings to add relevant chunks per question. Run `ollama pull nomic-embed-text:v1.5` before using.
+res Ollama 0.1.26+).
 - Set `EMBED_CONTEXT_ENABLED=false` to disable. Tune `EMBED_TOP_K`, `EMBED_MAX_CHUNKS`, `EMBED_MIN_QUESTION_LENGTH` for efficiency.
 
 ---
@@ -72,10 +73,10 @@ Create a `.env` (or export) for overrides:
 | REPO_CONTEXT_PATH         | Repo root for context               | Project root                |
 | CONTEXT_FILES             | Comma-separated files loaded first  | README.md,Gemfile           |
 | CONTEXT_MAX_CHARS         | Max context size                    | 35000                       |
-| OLLAMA_BASE_URL           | Ollama API URL                      | http://192.168.1.4:11434    |
+| OLLAMA_BASE_URL           | Ollama API URL                      | http://localhost:11434    |
 | OLLAMA_MODEL              | Primary reasoning (chat, planning)  | llama3.1:8b-instruct-q4_K_M |
 | OLLAMA_CODE_MODEL         | Code review / generation            | qwen2.5-coder:7b            |
-| OLLAMA_EMBED_MODEL        | Embeddings (RAG)                    | nomic-embed-text:latest     |
+| OLLAMA_EMBED_MODEL        | Embeddings (RAG)                    | nomic-embed-text:v1.5       |
 | OLLAMA_TEMPERATURE        | Chat temperature                    | 0.5                         |
 | OLLAMA_TIMEOUT            | Request timeout (seconds)           | 60                          |
 | DISCOVERY_AGENT_ENABLED   | Use LLM to pick extra files         | true                        |
