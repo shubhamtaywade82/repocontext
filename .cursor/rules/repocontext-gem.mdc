@@ -1,0 +1,84 @@
+---
+description: Clean Ruby and RSpec standards for this gem. Enforce clarity, single responsibility, and test quality.
+alwaysApply: true
+---
+
+# RepoContext Gem - Cursor Rules
+
+## Project
+
+Ruby gem (RepoContext). No Rails. Target Ruby 3.x. Optimize for clarity and maintainability.
+
+## Core Principles
+
+- Ruthlessly enforce clarity and simplicity.
+- Code must be self-documenting.
+- Optimize for human understanding, not cleverness.
+- Prefer deletion over addition.
+- Leave code better than you found it.
+
+## Naming
+
+- Method names: verbs describing behavior (e.g. `build_context`, `select_paths`).
+- Variable names: describe the data (e.g. `review_plan`, `file_paths`).
+- Class names: purpose and role (e.g. `ContextBuilder`, `ReviewPlanner`).
+- No abbreviations, single-letter names, or ambiguous terms.
+- No type encoding in names (no Hungarian notation).
+
+## Methods
+
+- One thing only per method.
+- ~5–10 lines; split longer methods.
+- Guard clauses at the top to validate input.
+- Return a single, predictable type.
+- No boolean flags that change behavior.
+- No hashes with mixed meanings.
+
+## Classes
+
+- Single, clear responsibility per class.
+- Prefer composition over inheritance.
+- Limit inheritance depth.
+- Use private methods for internal behavior.
+- Class names must communicate role and intent.
+
+## Conditionals
+
+- Prefer guard clauses over if/else chains.
+- Avoid double negatives and deep nesting.
+- Use Ruby built-ins instead of manual branching.
+- Use polymorphism instead of type switches where it fits.
+
+## Refactoring
+
+- Refactor continuously while making changes.
+- Remove comments when code is self-explanatory.
+- Extract logic into named methods instead of inline comments.
+- Encapsulate behavior behind intention-revealing names.
+- Reduce duplication aggressively.
+
+## Testing (RSpec)
+
+- Tests must be as readable as production code.
+- Use RSpec contexts to group behavior.
+- Descriptions must describe behavior, not implementation.
+- Name expected and actual values explicitly.
+- Avoid complex setup that obscures intent.
+- One behavior per example.
+- Use `describe '.method'` / `describe '#method'`; contexts with when/with/without.
+- Use `expect` only; no `should`. Prefer `is_expected.to` for one-liners.
+- Use `let` over instance variables; `let!` when value must exist before the example.
+
+## Style
+
+- Two spaces; no trailing whitespace; newline at EOF.
+- Prefer 80–120 character lines.
+- Frozen string literal at top of Ruby files when conventional for the project.
+
+## Enforcement
+
+- Call out unclear names immediately.
+- Reject long methods without justification.
+- Highlight hidden responsibilities and unnecessary complexity.
+- Demand refactoring instead of explanation.
+- Prefer deletion over addition.

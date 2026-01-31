@@ -53,10 +53,10 @@ module RepoContext
 
     def self.logger
       @logger ||= begin
-        l = Logger.new($stdout)
-        l.level = LOG_LEVEL == "debug" ? Logger::DEBUG : Logger::INFO
-        l.formatter = proc { |severity, datetime, _progname, msg| "[#{datetime.strftime('%H:%M:%S')}] #{severity}: #{msg}\n" }
-        l
+        log_instance = Logger.new($stdout)
+        log_instance.level = LOG_LEVEL == "debug" ? Logger::DEBUG : Logger::INFO
+        log_instance.formatter = proc { |severity, datetime, _progname, msg| "[#{datetime.strftime('%H:%M:%S')}] #{severity}: #{msg}\n" }
+        log_instance
       end
     end
   end

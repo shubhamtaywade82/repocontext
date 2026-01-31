@@ -9,23 +9,23 @@ module RepoContext
   class Server < Sinatra::Base
     set :root, File.expand_path("../..", __dir__)
     set :views, File.join(File.expand_path("../..", __dir__), "views")
-    set :public_folder, File.join(File.expand_path("../..", __dir__), "public") # If any public assets exist
+    set :public_folder, File.join(File.expand_path("../..", __dir__), "public")
 
     configure do
-      begin
-        set :ollama_client, RepoContext::OllamaClientFactory.build(
-          model: RepoContext::Settings::OLLAMA_MODEL,
-          temperature: RepoContext::Settings::OLLAMA_TEMPERATURE.to_f,
-          timeout: RepoContext::Settings::OLLAMA_TIMEOUT
-        )
-        set :ollama_model, RepoContext::Settings::OLLAMA_MODEL
-        RepoContext::Settings.logger.info do
-          "Server initialized: context_path=#{RepoContext::Settings::REPO_ROOT}, " \
-          "model=#{RepoContext::Settings::OLLAMA_MODEL}"
-        end
-      rescue StandardError => e
-        RepoContext::Settings.logger.error { "Failed to initialize Ollama client: #{e.message}" }
+      ollama_client = RepoContext::OllamaClientFactory.build(
+        model: RepoContext::Settings::OLLAMA_MODEL,
+        temperature: RepoContext::Settings::OLLAMA_TEMPERATURE.to_f,
+        timeout: RepoContext::Settings::OLLAMA_TIMEOUT
+      )
+      set :ollama_client, ollama_client
+      set :ollama_model, RepoContext::Settings::OLLAMA_MODEL
+      RepoContext::Settings.logger.info do
+        "Server initialized: context_path=#{RepoContext::Settings::REPO_ROOT}, " \
+        "model=#{RepoContext::Settings::OLLAMA_MODEL}"
       end
+    rescue StandardError => e
+      RepoContext::Settings.logger.error { "Failed to initialize Ollama client: #{e.message}" }
+      raise
     end
 
     helpers do
