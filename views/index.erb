@@ -93,7 +93,9 @@
         width: 100%;
         display: flex;
         flex-direction: column;
-        background: rgba(13, 17, 23, 0.6);
+        background: rgba(13, 17, 23, 0.3);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
         border: 1px solid var(--glass-border);
       }
     }
@@ -266,7 +268,7 @@
     /* Chat Input */
     .chat-input-area {
       padding: 24px;
-      background: linear-gradient(to top, rgba(0,0,0,0.8), transparent 100%);
+      background: linear-gradient(to top, rgba(0,0,0,0.4), transparent 100%);
     }
     .input-wrapper {
       position: relative;
@@ -276,7 +278,9 @@
     }
     .chat-input {
       width: 100%;
-      background: #121721;
+      background: rgba(18, 23, 33, 0.3);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
       border: 1px solid var(--glass-border);
       border-radius: 16px;
       padding: 16px 50px 16px 20px;
@@ -291,7 +295,7 @@
       outline: none;
       border-color: var(--primary);
       box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
-      background: #0d1117;
+      background: rgba(13, 17, 23, 0.5);
     }
     .send-btn {
       position: absolute;
@@ -320,6 +324,12 @@
       gap: 4px;
       font-size: 0.85rem;
       color: var(--text-muted);
+      background: rgba(13, 17, 23, 0.4);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 12px;
     }
 
 
@@ -378,6 +388,9 @@
       position: relative;
       opacity: 0;
       animation: slideRight 0.3s forwards;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 8px;
+      border-radius: 8px;
     }
     .timeline-item:not(:last-child)::after {
       content: '';
