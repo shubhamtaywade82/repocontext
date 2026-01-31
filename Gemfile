@@ -8,6 +8,8 @@ gem "dotenv"
 gem "ollama-client", "~> 0.2"
 gem "sinatra", "~> 3.0"
 gem "webrick"
+gem "puma"
+
 
 group :test do
   gem "rspec"

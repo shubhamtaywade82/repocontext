@@ -195,6 +195,8 @@ module RepoContext
 
       def emit_review_stream_event(out, event_name, iteration, payload)
         case event_name
+        when :init
+          write_stream_event(out, "init", paths: payload[:paths])
         when :plan
           write_stream_event(out, "status", message: "Planning step #{iteration + 1}…")
         when :review_file
@@ -292,10 +294,10 @@ module RepoContext
 
     post "/api/review/stream" do
       review_paths, review_focus = parse_review_request
-      body = Enumerator.new do |yielder|
-        build_review_stream_enumerator(review_paths, review_focus, yielder)
+      content_type "application/x-ndjson", charset: "utf-8"
+      stream do |out|
+        build_review_stream_enumerator(review_paths, review_focus, out)
       end
-      [200, { "Content-Type" => "application/x-ndjson; charset=utf-8" }, body]
     rescue JSON::ParserError
       json_error_response(422, "Invalid JSON body")
     end

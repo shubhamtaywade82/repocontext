@@ -429,6 +429,10 @@
     .timeline-label { font-size: 0.9rem; font-weight: 500; color: var(--text-main); }
     .timeline-detail { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
 
+    .timeline-item.pending { opacity: 0.5; animation: none; opacity: 0.5; }
+    .timeline-item.pending .timeline-icon { border-style: dashed; background: transparent; box-shadow: none; animation: none; color: transparent; }
+
+
     /* Main Review Area */
     .review-main {
       padding: 30px;
@@ -784,40 +788,79 @@
           try {
             const data = JSON.parse(line);
 
-            if (data.event === 'status') {
-               markLastTimelineDone();
-               addTimelineItem('Planning', data.message);
+            if (data.event === 'init') {
+                reviewTimeline.innerHTML = ''; // Clear "Initialize"
+                addTimelineItem('Planning', 'Review plan initialized', 'done');
+                // metrics or summary could go here
+                if (data.paths && Array.isArray(data.paths)) {
+                  data.paths.forEach(p => {
+                    const el = addTimelineItem(p.split('/').pop(), 'Pending...', 'pending');
+                    el.dataset.fullPath = p;
+                  });
+                }
+            } else if (data.event === 'status') {
+               // Only add a generic status item if it's planning/summarizing, OR update the last active item if appropriate
+               // For now, let's keep it simple: if "Planning step", maybe flash the Planning item?
+               // Or if just "Planning..", ignore to avoid clutter, or add a transient item.
+               // Let's rely on the specific file events for main progress.
+               // If it's a "Planning step X", we might not want to log it if we have a file list.
+               // But let's show it if it's not a file review.
+               if (!data.message.includes('Planning step')) {
+                 // addTimelineItem('Status', data.message, 'active');
+               }
             } else if (data.event === 'error') {
                markLastTimelineDone();
-               addTimelineItem('Error', data.error, 'error'); // Define styling for 'error' class if needed or use 'active'
+               addTimelineItem('Error', data.error, 'error');
                const errorCard = document.createElement('div');
                errorCard.className = 'finding-card error';
                errorCard.innerHTML = `<div class="finding-header"><span class="finding-rule">Error</span></div><div>${escapeHtml(data.error)}</div>`;
                reviewResultsArea.appendChild(errorCard);
             } else if (data.event === 'review_file') {
                markLastTimelineDone();
-               addTimelineItem('Reviewing', data.path.split('/').pop(), 'active');
-            } else if (data.event === 'findings') {
-               // Render findings for this file
-               const findingsHtml = data.findings.map(f => `
-                 <div class="finding-card ${f.severity}">
-                   <div class="finding-header">
-                     <span class="finding-rule">${escapeHtml(f.rule || 'Issue')}</span>
-                     <span class="finding-path">${escapeHtml(data.path)}${f.line ? ':' + f.line : ''}</span>
-                   </div>
-                   <div>${escapeHtml(f.message)}</div>
-                 </div>
-               `).join('');
+               // Find existing pending item
+               const shortName = data.path.split('/').pop();
+               let el = Array.from(reviewTimeline.children).find(child => child.dataset.fullPath === data.path);
 
-               if (findingsHtml) {
-                 const container = document.createElement('div');
-                 container.innerHTML = `<h3 style="margin:20px 0 10px; font-size:1rem; opacity:0.8">Findings for ${escapeHtml(data.path)}</h3>${findingsHtml}`;
-                 reviewResultsArea.appendChild(container);
+               if (el) {
+                 el.classList.remove('pending');
+                 el.classList.add('active');
+                 el.querySelector('.timeline-detail').innerText = 'Reviewing...';
+                 // scrollTo
+                 el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+               } else {
+                 // Fallback if not found (e.g. planner chose something else)
+                 el = addTimelineItem('Reviewing', shortName, 'active');
+                 el.dataset.fullPath = data.path;
+               }
+            } else if (data.event === 'findings') {
+               // Update the currently active file to done
+               const items = reviewTimeline.querySelectorAll('.timeline-item.active');
+               if (items.length > 0) {
+                 const last = items[items.length - 1];
+                 last.classList.remove('active');
+                 last.classList.add('done');
+                 last.querySelector('.timeline-icon').innerText = '✓';
+
+                 const count = data.findings ? data.findings.length : 0;
+                 last.querySelector('.timeline-detail').innerText = count > 0 ? `${count} findings` : 'No findings';
+               }
+
+               // Render findings
+               if (data.findings) {
+                 data.findings.forEach(f => {
+                   const card = document.createElement('div');
+                   card.className = `finding-card ${f.severity || 'warning'}`;
+                   card.innerHTML = `
+                     <div class="finding-header">
+                       <span class="finding-rule">${escapeHtml(f.category || 'Issue')}</span>
+                       <span class="finding-path">${escapeHtml(data.path)}:${f.line || '?'}</span>
+                     </div>
+                     <div>${escapeHtml(f.message)}</div>
+                   `;
+                   reviewResultsArea.appendChild(card);
+                 });
                }
             } else if (data.event === 'summary') {
-               markLastTimelineDone();
-               addTimelineItem('Summary', 'Finalizing report...', 'done');
-
                const summaryDiv = document.createElement('div');
                summaryDiv.className = 'glass config-card';
                summaryDiv.style.marginTop = '20px';

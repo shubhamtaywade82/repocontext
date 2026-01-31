@@ -22,6 +22,8 @@ module RepoContext
       paths_to_review = resolve_paths_to_review(request_paths)
       current_state = ReviewState.new(request_paths: paths_to_review, focus: focus)
 
+      yield_event(event_callback, :init, 0, { paths: paths_to_review })
+
       Settings::REVIEW_MAX_ITERATIONS.times do
         yield_event(event_callback, :plan, current_state.iteration, nil)
         if Settings.shutdown_requested?

@@ -12,11 +12,14 @@ GEM
       addressable (>= 2.8)
     mustermann (3.0.4)
       ruby2_keywords (~> 0.0.1)
+    nio4r (2.7.5)
     ollama-client (0.2.6)
       bigdecimal
       csv
       json-schema (~> 4.0)
     public_suffix (7.0.2)
+    puma (7.2.0)
+      nio4r (~> 2.0)
     rack (2.2.21)
     rack-protection (3.2.0)
       base64 (>= 0.1.0)
@@ -52,6 +55,7 @@ PLATFORMS
 DEPENDENCIES
   dotenv
   ollama-client (~> 0.2)
+  puma
   rack-test
   rspec
   sinatra (~> 3.0)
@@ -66,8 +70,10 @@ CHECKSUMS
   dotenv (3.2.0) sha256=e375b83121ea7ca4ce20f214740076129ab8514cd81378161f11c03853fe619d
   json-schema (4.3.1) sha256=d5e68dc32b94408d0b06ad04f9382ccbb6fe5a44910e066f8547f56c471a7825
   mustermann (3.0.4) sha256=85fadcb6b3c6493a8b511b42426f904b7f27b282835502233dd154daab13aa22
+  nio4r (2.7.5) sha256=6c90168e48fb5f8e768419c93abb94ba2b892a1d0602cb06eef16d8b7df1dca1
   ollama-client (0.2.6) sha256=8e7f500ffe120d1586cd7d8690b725c3e1c8b773c5e7e70c3cfc2c6b00ab1764
   public_suffix (7.0.2) sha256=9114090c8e4e7135c1fd0e7acfea33afaab38101884320c65aaa0ffb8e26a857
+  puma (7.2.0) sha256=bf8ef4ab514a4e6d4554cb4326b2004eba5036ae05cf765cfe51aba9706a72a8
   rack (2.2.21) sha256=14e2f72f0765455fe424ff601588ac5ce84e95784f59e99251ffe1527152f739
   rack-protection (3.2.0) sha256=3c74ba7fc59066453d61af9bcba5b6fe7a9b3dab6f445418d3b391d5ea8efbff
   rack-test (2.2.0) sha256=005a36692c306ac0b4a9350355ee080fd09ddef1148a5f8b2ac636c720f5c463
