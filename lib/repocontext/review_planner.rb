@@ -56,12 +56,15 @@ module RepoContext
     end
 
     def parse_action_from_response(llm_response)
-      return ReviewPlanStep::DONE if llm_response["done"] == true
+      return ReviewPlanStep::DONE if llm_response.is_a?(Hash) && llm_response["done"] == true
 
-      llm_response["next_action"].to_s.strip
+      action = llm_response.is_a?(Hash) ? llm_response["next_action"].to_s.strip : ""
+      action.empty? ? ReviewPlanStep::DONE : action
     end
 
     def parse_target_from_response(llm_response)
+      return nil unless llm_response.is_a?(Hash)
+
       target = llm_response["target"].to_s.strip
       target.empty? ? nil : target
     end

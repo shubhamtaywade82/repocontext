@@ -91,7 +91,9 @@ module RepoContext
         next unless File.file?(path)
         next if existing_paths.include?(File.expand_path(path))
 
-        content = File.read(path)
+        content = read_file_safely(path)
+        next if content.nil?
+
         room = max_chars - total_chars
         if content.size <= room
           total_chars += content.size
@@ -105,6 +107,13 @@ module RepoContext
         end
       end
       result
+    end
+
+    def read_file_safely(path)
+      File.read(path)
+    rescue Errno::ENOENT, Errno::EACCES, Errno::EISDIR => e
+      @log.warn { "skip #{path}: #{e.message}" }
+      nil
     end
 
     def load_repo_context(files = Settings::REFERENCE_FILES, max_chars: Settings::CONTEXT_MAX_CHARS)
@@ -124,6 +133,7 @@ module RepoContext
       end.to_set
     end
 
+    # Used by question_boost_paths to infer path from "ModelName model" in question (e.g. User model -> app/models/user.rb).
     def pascal_to_snake(str)
       str.gsub(/([A-Z]+)([A-Z][a-z])/, '\1_\2').gsub(/([a-z\d])([A-Z])/, '\1_\2').downcase
     end

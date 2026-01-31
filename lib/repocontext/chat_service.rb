@@ -13,9 +13,9 @@ module RepoContext
 
     def ask(question, repo_context:, conversation_history:)
       log_ask_start(question)
-      response_text = fetch_response(question, repo_context, conversation_history)
-      log_ask_done(response_text)
-      response_text
+      reply_text = reply_text_from_chat(question, repo_context, conversation_history)
+      log_ask_done(reply_text)
+      reply_text
     rescue Ollama::Error => e
       @log.warn { "chat_raw failed: #{e.message}, falling back to generate" }
       ask_via_generate(question, repo_context: repo_context)
@@ -42,15 +42,15 @@ module RepoContext
       @log.info { "reply: #{response_text.size} chars" }
     end
 
-    def fetch_response(question, codebase_context, message_history)
+    def reply_text_from_chat(question, codebase_context, message_history)
       messages = build_messages(codebase_context, message_history, question)
-      raw_chat_response = @ollama_client.chat_raw(
+      raw = @ollama_client.chat_raw(
         model: @model_name,
         messages: messages,
         allow_chat: true,
         options: { temperature: @temperature }
       )
-      extract_message_content(raw_chat_response)
+      extract_message_content(raw)
     end
 
     def extract_message_content(raw_chat_response)

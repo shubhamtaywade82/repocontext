@@ -24,11 +24,15 @@ module RepoContext
       return "" if index.empty?
 
       vec = embed_string(question.to_s.strip)
+      return "" if vec.empty?
+
       top_chunks = top_chunks_by_similarity(index, vec)
       assemble_context(top_chunks, max_chars)
+    rescue JSON::ParserError, Timeout::Error, Errno::ECONNREFUSED => e
+      @log.warn { "embed context failed (#{e.class}): #{e.message}" }
+      ""
     rescue StandardError => e
       @log.warn { "embed context failed (#{e.class}): #{e.message}" }
-      @log.warn { e.backtrace.join("\n") }
       ""
     end
 
@@ -46,14 +50,18 @@ module RepoContext
 
         @log.info { "building embedding index (model=#{Settings::OLLAMA_EMBED_MODEL})..." }
         chunks = chunk_repo
-        index = chunks.map do |c|
-          vec = embed_string(c[:text])
-          { path: c[:path], text: c[:text], embedding: vec }
-        end
+        index = index_chunks_with_embeddings(chunks)
         @index_cache[:index] = index
         @index_cache[:repo] = @repo_root
         @log.info { "embedding index built: #{index.size} chunks" }
         index
+      end
+    end
+
+    def index_chunks_with_embeddings(chunks)
+      chunks.map do |c|
+        vec = embed_string(c[:text])
+        { path: c[:path], text: c[:text], embedding: vec }
       end
     end
 
@@ -63,13 +71,20 @@ module RepoContext
       paths.each do |rel_path|
         break if chunks.size >= Settings::EMBED_MAX_CHUNKS
 
-        full = File.join(@repo_root, rel_path)
-        next unless File.file?(full)
+        full_path = File.join(@repo_root, rel_path)
+        next unless File.file?(full_path)
 
-        content = File.read(full)
-        chunk_text(content, rel_path).each { |c| chunks << c; break if chunks.size >= Settings::EMBED_MAX_CHUNKS }
+        append_chunks_from_file(full_path, rel_path, chunks)
       end
       chunks
+    end
+
+    def append_chunks_from_file(full_path, rel_path, chunks)
+      content = File.read(full_path)
+      chunk_text(content, rel_path).each do |c|
+        chunks << c
+        return if chunks.size >= Settings::EMBED_MAX_CHUNKS
+      end
     end
 
     def chunk_text(text, path)
@@ -123,7 +138,6 @@ module RepoContext
     end
 
     def embed_string(text)
-      @log.info { "DEBUG: embed_string called with '#{text[0,20]}...'" }
       uri = URI.parse("#{Settings::OLLAMA_BASE_URL}/api/embed")
       payload = {
         model: Settings::OLLAMA_EMBED_MODEL,
@@ -147,6 +161,9 @@ module RepoContext
       # /api/embed returns "embeddings": [[...]] for single string
       # fallback to "embedding" just in case mechanism differs
       json["embeddings"]&.first || json["embedding"] || []
+    rescue JSON::ParserError, Timeout::Error, Errno::ECONNREFUSED => e
+      @log.warn { "embed request failed: #{e.message}" }
+      []
     rescue StandardError => e
       @log.warn { "embed request exception: #{e.message}" }
       []

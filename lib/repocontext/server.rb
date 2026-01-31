@@ -11,18 +11,25 @@ module RepoContext
     set :views, File.join(File.expand_path("../..", __dir__), "views")
     set :public_folder, File.join(File.expand_path("../..", __dir__), "public")
 
-    configure do
-      ollama_client = RepoContext::OllamaClientFactory.build(
+    def self.build_ollama_client
+      RepoContext::OllamaClientFactory.build(
         model: RepoContext::Settings::OLLAMA_MODEL,
         temperature: RepoContext::Settings::OLLAMA_TEMPERATURE.to_f,
         timeout: RepoContext::Settings::OLLAMA_TIMEOUT
       )
-      set :ollama_client, ollama_client
-      set :ollama_model, RepoContext::Settings::OLLAMA_MODEL
+    end
+
+    def self.log_server_start
       RepoContext::Settings.logger.info do
         "Server initialized: context_path=#{RepoContext::Settings::REPO_ROOT}, " \
         "model=#{RepoContext::Settings::OLLAMA_MODEL}"
       end
+    end
+
+    configure do
+      set :ollama_client, build_ollama_client
+      set :ollama_model, RepoContext::Settings::OLLAMA_MODEL
+      log_server_start
     rescue StandardError => e
       RepoContext::Settings.logger.error { "Failed to initialize Ollama client: #{e.message}" }
       raise
@@ -43,7 +50,7 @@ module RepoContext
       end
 
       def embedding_context_builder
-        @embedding_context_builder ||= RepoContext::NONEXISTENT_CLASS_SHOULD_CRASH.new(
+        @embedding_context_builder ||= RepoContext::EmbeddingContextBuilder.new(
           client: ollama_client,
           repo_root: RepoContext::Settings::REPO_ROOT,
           candidate_paths_source: -> { discovery_path_selector.candidate_paths },
