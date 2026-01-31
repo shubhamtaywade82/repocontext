@@ -3,937 +3,801 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Repo Chat Assistant</title>
+  <title>Repo Chat | AI Assistant</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/marked@8/marked.min.js" crossorigin="anonymous"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js" crossorigin="anonymous"></script>
   <style>
     :root {
-      --bg: #0c0f14;
-      --surface: #161b22;
-      --surface-raised: #1c2128;
-      --border: #30363d;
-      --border-subtle: #21262d;
-      --primary: #388bfd;
-      --primary-hover: #1f6feb;
+      /* Palette */
+      --bg-dark: #050505;
+      --bg-gradient-start: #0a0e17;
+      --bg-gradient-end: #000000;
+
+      --glass-surface: rgba(22, 27, 34, 0.6);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --glass-highlight: rgba(255, 255, 255, 0.03);
+
+      --primary: #58a6ff;
+      --primary-glow: rgba(88, 166, 255, 0.4);
+      --secondary: #8b949e;
+
       --success: #3fb950;
-      --success-hover: #2ea043;
-      --text: #e6edf3;
-      --text-muted: #8b949e;
+      --success-glow: rgba(63, 185, 80, 0.3);
       --error: #f85149;
-      --radius: 12px;
+
+      --text-main: #f0f6fc;
+      --text-muted: #8b949e;
+      --text-dim: #484f58;
+
+      /* Spacing & Radius */
+      --radius-lg: 24px;
+      --radius-md: 16px;
       --radius-sm: 8px;
-      --space-xs: 0.25rem;
-      --space-sm: 0.5rem;
-      --space-md: 1rem;
-      --space-lg: 1.5rem;
-      --space-xl: 2rem;
-      --touch: 44px;
-      --content-max: 42rem;
-      --header-height: 56px;
+
+      --header-height: 70px;
     }
 
-    *, *::before, *::after { box-sizing: border-box; }
-    html { -webkit-text-size-adjust: 100%; }
+    * { box-sizing: border-box; }
+
     body {
       margin: 0;
-      font-family: 'DM Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
-      font-size: clamp(0.9375rem, 2vw, 1rem);
-      line-height: 1.5;
-      background: var(--bg);
-      color: var(--text);
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg-dark);
+      background: radial-gradient(circle at top left, #1b202c, #050505 60%);
+      color: var(--text-main);
       min-height: 100vh;
-      min-height: 100dvh;
+      overflow: hidden; /* App-like feel */
       display: flex;
       flex-direction: column;
     }
 
-    .header {
-      flex-shrink: 0;
-      min-height: var(--header-height);
-      padding: var(--space-md) var(--space-lg);
-      background: var(--surface);
-      border-bottom: 1px solid var(--border-subtle);
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: var(--space-sm);
-    }
-    .header__title {
-      font-size: clamp(0.875rem, 1.5vw, 0.9375rem);
-      font-weight: 500;
-      color: var(--text);
-      margin: 0;
-    }
-    .header__title code {
-      background: var(--surface-raised);
-      padding: 0.125rem 0.375rem;
-      border-radius: var(--radius-sm);
-      font-size: 0.8125rem;
-      color: var(--text-muted);
+    /* Utilities */
+    .glass {
+      background: var(--glass-surface);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.4);
     }
 
-    .tabs {
-      flex-shrink: 0;
+    .btn-reset { border: none; background: none; cursor: pointer; color: inherit; font-family: inherit; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* Layout */
+    .app-container {
       display: flex;
-      padding: 0 var(--space-lg);
-      background: var(--surface);
-      border-bottom: 1px solid var(--border-subtle);
-      gap: 0;
+      flex-direction: column;
+      height: 100vh;
+      width: 100vw;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
     }
-    .tab {
-      flex: 1;
-      min-height: var(--touch);
-      padding: var(--space-sm) var(--space-md);
-      border: none;
-      background: transparent;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-family: inherit;
-      font-size: 0.875rem;
+
+    @media(min-width: 1024px) {
+      .app-container {
+        padding: 20px;
+      }
+      body {
+        align-items: center;
+        justify-content: center;
+      }
+      .main-window {
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        height: 100%;
+        max-height: 95vh;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        background: rgba(13, 17, 23, 0.6);
+        border: 1px solid var(--glass-border);
+      }
+    }
+
+    @media(max-width: 1023px) {
+      .main-window {
+        height: 100%;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+    }
+
+    /* Header */
+    .header {
+      height: var(--header-height);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      border-bottom: 1px solid var(--glass-border);
+      background: rgba(13, 17, 23, 0.4);
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--primary), #a371f7);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      box-shadow: 0 0 15px var(--primary-glow);
+    }
+
+    /* Nav Tabs */
+    .nav-tabs {
+      display: flex;
+      gap: 4px;
+      padding: 4px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 12px;
+      border: 1px solid var(--glass-border);
+    }
+    .nav-tab {
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 0.9rem;
       font-weight: 500;
-      border-bottom: 2px solid transparent;
-      transition: color 0.15s, border-color 0.15s;
+      color: var(--text-muted);
+      transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1);
     }
-    .tab:hover { color: var(--text); }
-    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
-    .tab:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-    @media (min-width: 640px) {
-      .tab { flex: 0 1 auto; }
+    .nav-tab:hover { color: var(--text-main); }
+    .nav-tab.active {
+      background: var(--glass-highlight);
+      color: white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    /* Content Area */
+    .content-area {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      display: flex;
     }
 
     .panel {
+      position: absolute;
+      inset: 0;
       display: none;
       flex-direction: column;
-      flex: 1;
-      min-height: 0;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 0.3s ease, transform 0.3s ease;
     }
-    .panel.active { display: flex; }
+    .panel.active {
+      display: flex;
+      opacity: 1;
+      transform: translateY(0);
+    }
 
-    /* Chat panel */
-    .messages {
+    /* --- Chat UI --- */
+    .chat-layout {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .chat-messages {
       flex: 1;
       overflow-y: auto;
-      padding: var(--space-lg);
+      padding: 24px;
       display: flex;
       flex-direction: column;
-      gap: var(--space-lg);
-      -webkit-overflow-scrolling: touch;
+      gap: 20px;
+      scroll-behavior: smooth;
     }
+
     .message {
-      max-width: min(85%, var(--content-max));
-      padding: var(--space-md) var(--space-lg);
-      border-radius: var(--radius);
-      line-height: 1.55;
-      white-space: pre-wrap;
-      word-break: break-word;
+      max-width: 85%;
+      padding: 16px 20px;
+      border-radius: 18px;
+      line-height: 1.6;
+      font-size: 0.95rem;
+      position: relative;
+      animation: msgFadeIn 0.3s cubic-bezier(0.2, 0.9, 0.4, 1);
     }
+
+    @keyframes msgFadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
     .message.user {
       align-self: flex-end;
-      background: var(--primary);
-      color: #fff;
+      background: linear-gradient(135deg, var(--primary), #3b82f6);
+      color: white;
+      border-bottom-right-radius: 4px;
+      box-shadow: 0 4px 12px var(--primary-glow);
     }
+
     .message.assistant {
       align-self: flex-start;
-      background: var(--surface-raised);
-      border: 1px solid var(--border);
+      background: var(--glass-surface);
+      border: 1px solid var(--glass-border);
+      border-bottom-left-radius: 4px;
     }
-    .message .role {
-      display: block;
-      font-size: 0.6875rem;
+
+    .message-role {
+      font-size: 0.7rem;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      opacity: 0.9;
-      margin-bottom: 0.35rem;
+      margin-bottom: 6px;
+      opacity: 0.7;
       font-weight: 600;
     }
-    .message.user .role { color: rgba(255,255,255,0.9); }
-    .message .body { display: block; }
-    .message .body p { margin: 0 0 0.5em; }
-    .message .body p:last-child { margin-bottom: 0; }
-    .message .body strong { font-weight: 600; }
-    .message .body em { font-style: italic; }
-    .message .body code {
-      background: var(--surface-raised);
-      padding: 0.15em 0.35em;
-      border-radius: var(--radius-sm);
+
+    /* Markdown Styles */
+    .message p { margin: 0 0 0.8em; }
+    .message p:last-child { margin: 0; }
+    .message pre {
+      background: rgba(0,0,0,0.3);
+      padding: 12px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9em;
+      border: 1px solid var(--glass-border);
+    }
+    .message code {
+      background: rgba(0,0,0,0.3);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
       font-size: 0.9em;
     }
-    .message .body pre {
-      margin: 0.5em 0;
-      padding: var(--space-md);
-      background: var(--surface-raised);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-sm);
-      overflow-x: auto;
-      white-space: pre-wrap;
-    }
-    .message .body pre code { padding: 0; background: none; }
-    .message .body ul, .message .body ol { margin: 0.5em 0; padding-left: 1.5em; }
-    .message .body li { margin: 0.25em 0; }
-    .message .body a { color: var(--primary); }
-    .message .body blockquote { margin: 0.5em 0; padding-left: 1em; border-left: 3px solid var(--border); color: var(--text-muted); }
 
-    .input-area {
-      flex-shrink: 0;
-      padding: var(--space-lg);
-      background: var(--surface);
-      border-top: 1px solid var(--border-subtle);
+    /* Chat Input */
+    .chat-input-area {
+      padding: 24px;
+      background: linear-gradient(to top, rgba(0,0,0,0.8), transparent 100%);
     }
-    .input-area .container {
-      max-width: var(--content-max);
+    .input-wrapper {
+      position: relative;
+      max-width: 900px;
       margin: 0 auto;
-    }
-    .input-row {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-sm);
-    }
-    @media (min-width: 480px) {
-      .input-row { flex-direction: row; gap: var(--space-md); }
-    }
-    #input {
-      flex: 1;
-      min-height: var(--touch);
-      padding: var(--space-sm) var(--space-md);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      background: var(--bg);
-      color: var(--text);
-      font-family: inherit;
-      font-size: 0.9375rem;
-      resize: none;
-      max-height: 160px;
-      transition: border-color 0.15s;
-    }
-    #input:focus {
-      outline: none;
-      border-color: var(--primary);
-    }
-    #input::placeholder { color: var(--text-muted); }
-    #send {
-      min-height: var(--touch);
-      padding: var(--space-sm) var(--space-lg);
-      border: none;
-      border-radius: var(--radius-sm);
-      background: var(--primary);
-      color: #fff;
-      font-family: inherit;
-      font-weight: 500;
-      font-size: 0.9375rem;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-    #send:hover { background: var(--primary-hover); }
-    #send:disabled { opacity: 0.6; cursor: not-allowed; }
-    #send:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-    @media (min-width: 480px) {
-      #send { flex-shrink: 0; }
-    }
-
-    .status {
-      font-size: 0.8125rem;
-      color: var(--text-muted);
-      margin-top: var(--space-sm);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: var(--space-sm);
-    }
-    .status.error { color: var(--error); }
-    .status .spinner {
-      width: 16px;
-      height: 16px;
-      border: 2px solid var(--border);
-      border-top-color: var(--primary);
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .progress-steps {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: var(--space-xs);
-      margin-top: var(--space-xs);
-    }
-    .progress-steps .step {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--border);
-      transition: background 0.2s;
-    }
-    .progress-steps .step.active { background: var(--primary); }
-    .progress-steps .step.done { background: var(--text-muted); }
-
-    .chat-progress-list {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-sm);
-      margin-top: var(--space-md);
-      max-width: var(--content-max);
-      margin-left: auto;
-      margin-right: auto;
       width: 100%;
     }
-    .chat-progress-list[hidden] { display: none !important; }
-    .chat-progress-step {
+    .chat-input {
+      width: 100%;
+      background: #121721;
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      padding: 16px 50px 16px 20px;
+      color: white;
+      font-family: inherit;
+      font-size: 1rem;
+      resize: none;
+      height: 60px;
+      transition: all 0.2s;
+    }
+    .chat-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+      background: #0d1117;
+    }
+    .send-btn {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: white;
       display: flex;
       align-items: center;
-      gap: var(--space-sm);
-      font-size: 0.875rem;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .send-btn:hover { transform: translateY(-50%) scale(1.1); box-shadow: 0 0 10px var(--primary-glow); }
+    .send-btn:disabled { opacity: 0.5; cursor: default; transform: translateY(-50%); }
+
+    /* Chat Progress & Steps */
+    .chat-status-bar {
+      margin-top: 12px;
+      min-height: 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.85rem;
       color: var(--text-muted);
     }
-    .chat-progress-step.active { color: var(--text); }
-    .chat-progress-step.done { color: var(--text-muted); }
-    .chat-progress-step .icon {
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--glass-border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+
+    /* --- Code Review UI --- */
+    .review-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      height: 100%;
+    }
+
+    @media(max-width: 768px) {
+      .review-layout { grid-template-columns: 1fr; grid-template-rows: 240px 1fr; }
+    }
+
+    /* Sidebar */
+    .review-sidebar {
+      background: rgba(13, 17, 23, 0.3);
+      border-right: 1px solid var(--glass-border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 20px;
+      border-bottom: 1px solid var(--glass-border);
+    }
+    .sidebar-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .timeline {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .timeline-item {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+      position: relative;
+      opacity: 0;
+      animation: slideRight 0.3s forwards;
+    }
+    .timeline-item:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      top: 24px;
+      left: 9px;
+      width: 2px;
+      height: calc(100% - 4px);
+      background: var(--glass-border);
+      z-index: 0;
+    }
+
+    @keyframes slideRight {
+      from { opacity: 0; transform: translateX(-10px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    .timeline-icon {
       flex-shrink: 0;
       width: 20px;
       height: 20px;
+      border-radius: 50%;
+      background: var(--surface-raised);
+      border: 2px solid var(--text-muted);
+      z-index: 1;
       display: flex;
       align-items: center;
       justify-content: center;
-    }
-    .chat-progress-step .icon .spinner {
-      width: 16px;
-      height: 16px;
-      border: 2px solid var(--border);
-      border-top-color: var(--primary);
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
-    .chat-progress-step.done .icon .check {
-      color: var(--success);
-      font-weight: 700;
+      font-size: 10px;
+      transition: all 0.3s;
     }
 
-    /* Code Review panel */
-    .review-section {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      min-height: 0;
-      padding: 0;
-    }
-    @media (min-width: 768px) {
-      .review-section { flex-direction: row; }
-    }
-    .review-main {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      padding: var(--space-lg);
-    }
-    @media (min-width: 640px) {
-      .review-main { padding: var(--space-xl); }
-    }
-    .review-side-panel {
-      display: flex;
-      flex-direction: column;
-      background: var(--surface);
-      border-top: 1px solid var(--border-subtle);
-      max-height: 16rem;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    @media (min-width: 768px) {
-      .review-side-panel {
-        width: 20rem;
-        max-width: 100%;
-        max-height: none;
-        border-top: none;
-        border-left: 1px solid var(--border-subtle);
-        flex-shrink: 0;
-      }
-    }
-    .review-side-panel__title {
-      flex-shrink: 0;
-      padding: var(--space-md) var(--space-lg);
-      font-size: 0.8125rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      border-bottom: 1px solid var(--border-subtle);
-    }
-    .review-card {
-      max-width: var(--content-max);
-      margin: 0 auto;
-      width: 100%;
-      padding: var(--space-lg);
-      background: var(--surface);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius);
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-md);
-    }
-    .review-card label {
-      display: block;
-      font-size: 0.8125rem;
-      font-weight: 500;
-      color: var(--text-muted);
-      margin-bottom: var(--space-xs);
-    }
-    .review-card input {
-      width: 100%;
-      min-height: var(--touch);
-      padding: var(--space-sm) var(--space-md);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      background: var(--bg);
-      color: var(--text);
-      font-family: inherit;
-      font-size: 0.9375rem;
-    }
-    .review-card input:focus {
-      outline: none;
+    .timeline-item.active .timeline-icon {
       border-color: var(--primary);
+      box-shadow: 0 0 10px var(--primary-glow);
+      animation: pulse 2s infinite;
     }
-    .review-card input::placeholder { color: var(--text-muted); }
-    #runReview {
-      min-height: var(--touch);
-      padding: var(--space-sm) var(--space-lg);
-      border: none;
-      border-radius: var(--radius-sm);
+    .timeline-item.done .timeline-icon {
+      border-color: var(--success);
       background: var(--success);
-      color: #fff;
-      font-family: inherit;
-      font-weight: 500;
-      font-size: 0.9375rem;
-      cursor: pointer;
-      align-self: flex-start;
-      transition: background 0.15s;
+      color: white;
     }
-    #runReview:hover { background: var(--success-hover); }
-    #runReview:disabled { opacity: 0.6; cursor: not-allowed; }
-    #runReview:focus-visible { outline: 2px solid var(--success); outline-offset: 2px; }
 
-    .review-status-wrap {
-      display: flex;
-      align-items: center;
-      gap: var(--space-md);
-      margin-top: var(--space-md);
-      min-height: 1.5rem;
-      max-width: var(--content-max);
-      width: 100%;
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(88,166,255,0.4); } 70% { box-shadow: 0 0 0 6px rgba(0,0,0,0); } 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); } }
+
+    .timeline-content {
+      flex: 1;
+      padding-top: 1px;
     }
-    .review-status-wrap.in-progress .in-progress-badge {
+    .timeline-label { font-size: 0.9rem; font-weight: 500; color: var(--text-main); }
+    .timeline-detail { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
+
+    /* Main Review Area */
+    .review-main {
+      padding: 30px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 30px;
+    }
+
+    .config-card {
+      padding: 24px;
+      border-radius: var(--radius-md);
+    }
+
+    .form-group { margin-bottom: 20px; }
+    .form-group label { display: block; margin-bottom: 8px; font-size: 0.9rem; color: var(--text-muted); }
+    .form-input {
+      width: 100%;
+      background: rgba(0,0,0,0.2);
+      border: 1px solid var(--glass-border);
+      padding: 12px;
+      border-radius: 12px;
+      color: var(--text-main);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      transition: 0.2s;
+    }
+    .form-input:focus { outline: none; border-color: var(--primary); }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-weight: 600;
+      transition: 0.2s;
       display: inline-flex;
       align-items: center;
-      gap: var(--space-sm);
-      font-size: 0.8125rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      background: var(--surface-raised);
-      padding: var(--space-xs) var(--space-sm);
-      border-radius: var(--radius-sm);
+      gap: 8px;
     }
-    .review-status-wrap .in-progress-badge { display: none; }
-    .review-status-wrap .status-text { flex: 1; }
+    .btn-primary:hover { filter: brightness(1.1); box-shadow: 0 4px 12px var(--primary-glow); }
+    .btn-primary:disabled { opacity: 0.5; filter: grayscale(1); }
 
-    .review-progress-log {
-      flex: 1;
-      min-height: 0;
-      padding: var(--space-sm) var(--space-md);
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-xs);
-    }
-    .review-side-panel:not([data-has-steps]) { display: none; }
-    @media (min-width: 768px) {
-      .review-side-panel:not([data-has-steps]) { display: flex; }
-    }
-    .review-progress-log[hidden] { display: none !important; }
-    .review-progress-step {
-      display: flex;
-      align-items: center;
-      gap: var(--space-sm);
-      font-size: 0.8125rem;
-      color: var(--text-muted);
-      padding: var(--space-xs) var(--space-sm);
-      border-radius: var(--radius-sm);
-    }
-    .review-progress-step.active {
-      color: var(--text);
-      background: var(--surface-raised);
-    }
-    .review-progress-step .icon {
-      flex-shrink: 0;
-      width: 18px;
-      height: 18px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .review-progress-step .icon .spinner {
-      width: 14px;
-      height: 14px;
-      border: 2px solid var(--border);
-      border-top-color: var(--primary);
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
-    .review-progress-step.done .icon .check { color: var(--success); }
-    .review-progress-step .detail { margin-left: auto; font-size: 0.75rem; opacity: 0.9; }
-
-    .review-results {
-      flex: 1;
-      overflow-y: auto;
-      margin-top: var(--space-lg);
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-md);
-      -webkit-overflow-scrolling: touch;
-    }
-    .review-results .container {
-      max-width: var(--content-max);
-      margin: 0 auto;
-      width: 100%;
-    }
-    .review-summary {
-      padding: var(--space-lg);
-      background: var(--surface);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius);
-      white-space: pre-wrap;
-      font-size: 0.9375rem;
-      line-height: 1.6;
-    }
-    .review-finding {
-      padding: var(--space-md) var(--space-lg);
-      border-radius: var(--radius-sm);
-      font-size: 0.875rem;
+    /* Findings */
+    .finding-card {
+      margin-top: 20px;
       border-left: 4px solid var(--text-muted);
-      background: var(--surface);
-      border: 1px solid var(--border-subtle);
-      border-left-width: 4px;
+      padding: 16px 24px;
+      background: rgba(255,255,255,0.02);
+      border-radius: 8px;
     }
-    .review-finding.error { border-left-color: var(--error); }
-    .review-finding.warning { border-left-color: #d29922; }
-    .review-finding.suggestion { border-left-color: var(--text-muted); }
-    .review-finding .path { color: var(--text-muted); font-size: 0.8125rem; }
-    .review-finding .rule { font-weight: 600; color: var(--text); }
+    .finding-card.error { border-left-color: var(--error); }
+    .finding-card.warning { border-left-color: #d29922; }
+
+    .finding-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+    .finding-rule { font-weight: 700; color: var(--text-main); }
+    .finding-path { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--text-muted); }
   </style>
 </head>
 <body>
-  <header class="header">
-    <h1 class="header__title">Repo Chat Assistant — Chat about the codebase or run an agentic code review (plan → review files → summarize). <code>REPO_CONTEXT_PATH</code>, <code>CONTEXT_FILES</code>, <code>OLLAMA_BASE_URL</code>.</h1>
-  </header>
-  <nav class="tabs" role="tablist">
-    <button type="button" class="tab active" role="tab" aria-selected="true" aria-controls="panel-chat" id="tab-chat" data-tab="chat">Chat</button>
-    <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="panel-review" id="tab-review" data-tab="review">Code Review</button>
-  </nav>
-  <section id="panel-chat" class="panel active" role="tabpanel" aria-labelledby="tab-chat">
-    <div class="messages" id="messages"></div>
-    <div class="input-area">
-      <div class="container">
-        <div class="input-row">
-          <textarea id="input" placeholder="Ask about the codebase..." rows="1" aria-label="Message"></textarea>
-          <button type="button" id="send" aria-label="Send">Send</button>
-        </div>
-        <div class="status" id="status"></div>
-        <div class="progress-steps" id="progressSteps" style="display: none;">
-          <span class="step" id="step1" title="Gathering context"></span>
-          <span class="step" id="step2" title="Asking Ollama"></span>
-        </div>
-        <ol class="chat-progress-list" id="chatProgressList" hidden aria-live="polite">
-          <li class="chat-progress-step" id="chatStep1" data-step="0">
-            <span class="icon"><span class="spinner"></span></span>
-            <span class="label">Gathering context</span>
-          </li>
-          <li class="chat-progress-step" id="chatStep2" data-step="1">
-            <span class="icon"></span>
-            <span class="label">Asking Ollama</span>
-          </li>
-        </ol>
+
+<div class="app-container">
+  <div class="main-window">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="brand-icon">AI</div>
+        <span>RepoContext</span>
       </div>
+      <nav class="nav-tabs">
+        <button class="btn-reset nav-tab active" data-target="chat">Chat</button>
+        <button class="btn-reset nav-tab" data-target="review">Code Review</button>
+      </nav>
+    </header>
+
+    <!-- Content -->
+    <div class="content-area">
+
+      <!-- Chat Panel -->
+      <section id="panel-chat" class="panel active">
+        <div class="chat-layout">
+          <div class="chat-messages" id="chatMessages">
+            <div class="message assistant">
+              <div class="message-role">System</div>
+              <p>Welcome! I'm ready to answer questions about your codebase or help you review code.</p>
+            </div>
+          </div>
+
+          <div class="chat-input-area">
+            <div class="input-wrapper">
+              <div class="chat-status-bar" id="chatStatus" style="display:none;">
+                <span class="spinner"></span> <span id="chatStatusText">Processing...</span>
+              </div>
+              <textarea id="chatInput" class="chat-input" placeholder="Ask a question about the repo..." rows="1"></textarea>
+              <button id="chatSendBtn" class="btn-reset send-btn">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Review Panel -->
+      <section id="panel-review" class="panel">
+        <div class="review-layout">
+          <!-- Sidebar / Timeline -->
+          <aside class="review-sidebar">
+            <div class="sidebar-header">
+              <span class="sidebar-title">Review Progress</span>
+            </div>
+            <div class="timeline" id="reviewTimeline">
+              <div class="timeline-item done">
+                <div class="timeline-icon">✓</div>
+                <div class="timeline-content">
+                  <div class="timeline-label">Ready</div>
+                  <div class="timeline-detail">Waiting to start</div>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          <!-- Main Config / Results -->
+          <main class="review-main" id="reviewMain">
+            <div class="glass config-card">
+              <div class="form-group">
+                <label>Target Paths (Optional)</label>
+                <input type="text" id="reviewPaths" class="form-input" placeholder="e.g. lib/core/, app/models/user.rb">
+              </div>
+              <div class="form-group">
+                <label>Review Focus</label>
+                <input type="text" id="reviewFocus" class="form-input" placeholder="e.g. Security, Performance, Clean Code">
+              </div>
+              <button id="runReviewBtn" class="btn-reset btn-primary">
+                <span>Start Review Agent</span>
+              </button>
+            </div>
+
+            <div id="reviewResultsArea"></div>
+          </main>
+        </div>
+      </section>
+
     </div>
-  </section>
-  <section id="panel-review" class="panel" role="tabpanel" aria-labelledby="tab-review" hidden>
-    <div class="review-section">
-      <div class="review-main">
-        <div class="review-card">
-          <label for="reviewPaths">Paths (optional, comma-separated; empty = discover from repo)</label>
-          <input type="text" id="reviewPaths" placeholder="e.g. lib/repocontext/chat_service.rb, lib/repocontext/context_builder.rb">
-          <label for="reviewFocus">Focus (optional)</label>
-          <input type="text" id="reviewFocus" placeholder="e.g. Clean Ruby, naming, single responsibility">
-          <button type="button" id="runReview">Run code review</button>
-        </div>
-        <div class="review-status-wrap" id="reviewStatusWrap">
-          <span class="in-progress-badge"><span class="spinner"></span> In progress</span>
-          <div class="status status-text" id="reviewStatus"></div>
-        </div>
-        <div class="review-results" id="reviewResults">
-          <div class="container"></div>
-        </div>
-      </div>
-      <aside class="review-side-panel" id="reviewSidePanel" aria-label="Review progress">
-        <h2 class="review-side-panel__title">Progress</h2>
-        <ol class="review-progress-log" id="reviewProgressLog" hidden aria-live="polite"></ol>
-      </aside>
-    </div>
-  </section>
-  <script>
-    (function() {
-      const messagesEl = document.getElementById('messages');
-      const inputEl = document.getElementById('input');
-      const sendBtn = document.getElementById('send');
-      const statusEl = document.getElementById('status');
-      const progressStepsEl = document.getElementById('progressSteps');
-      const step1 = document.getElementById('step1');
-      const step2 = document.getElementById('step2');
-      const chatProgressListEl = document.getElementById('chatProgressList');
-      const chatStep1El = document.getElementById('chatStep1');
-      const chatStep2El = document.getElementById('chatStep2');
+  </div>
+</div>
 
-      function setStatus(text, isError) {
-        statusEl.innerHTML = text ? '<span class="spinner"></span>' + escapeHtml(text) : '';
-        statusEl.className = 'status' + (isError ? ' error' : '');
-        statusEl.style.display = text ? 'flex' : 'none';
-        progressStepsEl.style.display = text && !isError ? 'flex' : 'none';
-      }
+<script>
+  // -- Utilities --
+  const $ = id => document.getElementById(id);
+  const escapeHtml = s => {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  };
 
-      function updateChatProgressList(activeIndex) {
-        chatProgressListEl.hidden = false;
-        [chatStep1El, chatStep2El].forEach(function(el, i) {
-          var icon = el.querySelector('.icon');
-          el.classList.remove('active', 'done');
-          if (i < activeIndex) {
-            el.classList.add('done');
-            icon.innerHTML = '<span class="check">✓</span>';
-          } else if (i === activeIndex) {
-            el.classList.add('active');
-            icon.innerHTML = '<span class="spinner"></span>';
-          } else {
-            icon.innerHTML = '';
-          }
-        });
-      }
+  // -- Tabs --
+  document.querySelectorAll('.nav-tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.nav-tab').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      $(`panel-${t.dataset.target}`).classList.add('active');
+    });
+  });
 
-      function finishChatProgressList() {
-        [chatStep1El, chatStep2El].forEach(function(el) {
-          el.classList.remove('active');
-          el.classList.add('done');
-          el.querySelector('.icon').innerHTML = '<span class="check">✓</span>';
-        });
-        chatProgressListEl.hidden = true;
-      }
+  // -- Chat Logic --
+  const chatMessages = $('chatMessages');
+  const chatInput = $('chatInput');
+  const chatSendBtn = $('chatSendBtn');
+  const chatStatus = $('chatStatus');
+  const chatStatusText = $('chatStatusText');
+  let chatHistory = [];
 
-      function setProgressStep(activeIndex, statusText) {
-        progressStepsEl.style.display = 'flex';
-        statusEl.style.display = 'flex';
-        statusEl.innerHTML = statusText ? '<span class="spinner"></span>' + escapeHtml(statusText) : '';
-        step1.className = 'step' + (activeIndex > 0 ? ' done' : ' active');
-        step2.className = 'step' + (activeIndex > 1 ? ' done' : activeIndex === 1 ? ' active' : '');
-        updateChatProgressList(activeIndex);
-      }
+  function appendChatMsg(role, text) {
+    const div = document.createElement('div');
+    div.className = `message ${role}`;
 
-      function renderMarkdown(text) {
-        if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
-          marked.setOptions({ gfm: true, breaks: true });
-          var raw = marked.parse(text || '');
-          return DOMPurify.sanitize(raw, { ALLOWED_TAGS: ['p','br','strong','em','code','pre','ul','ol','li','a','blockquote','h1','h2','h3','h4','span'] });
-        }
-        return escapeHtml(text);
-      }
+    // Parse Markdown if assistant
+    let contentHtml = escapeHtml(text);
+    if (role === 'assistant' && typeof marked !== 'undefined') {
+       contentHtml = DOMPurify.sanitize(marked.parse(text));
+    } else {
+       // Simple formatting for user
+       contentHtml = `<p>${contentHtml}</p>`;
+    }
 
-      function appendMessage(role, content) {
-        const div = document.createElement('div');
-        div.className = 'message ' + role;
-        const label = role === 'user' ? 'You' : 'Assistant';
-        const bodyHtml = role === 'assistant' ? renderMarkdown(content) : escapeHtml(content);
-        div.innerHTML = '<span class="role">' + escapeHtml(label) + '</span><span class="body">' + bodyHtml + '</span>';
-        messagesEl.appendChild(div);
-        messagesEl.scrollTop = messagesEl.scrollHeight;
-      }
+    div.innerHTML = `
+      <div class="message-role">${role === 'user' ? 'You' : 'Assistant'}</div>
+      <div class="message-body">${contentHtml}</div>
+    `;
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
 
-      function escapeHtml(s) {
-        const div = document.createElement('div');
-        div.textContent = s;
-        return div.innerHTML;
-      }
+  async function sendChat() {
+    const txt = chatInput.value.trim();
+    if (!txt) return;
 
-      let conversationHistory = [];
+    chatInput.value = '';
+    appendChatMsg('user', txt);
 
-      async function sendMessage() {
-        const text = inputEl.value.trim();
-        if (!text) return;
-        inputEl.value = '';
-        appendMessage('user', text);
-        sendBtn.disabled = true;
-        setProgressStep(0, 'Gathering context…');
-        try {
-          const res = await fetch('/api/chat/stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text, history: conversationHistory })
-          });
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            setStatus(data.error || 'Request failed', true);
-            appendMessage('assistant', data.error || 'Something went wrong.');
-            return;
-          }
-          const reader = res.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = '';
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-            for (const line of lines) {
-              if (!line.trim()) continue;
-              try {
-                const data = JSON.parse(line);
-                if (data.event === 'status') {
-                  const isOllama = data.message && data.message.includes('Ollama');
-                  setProgressStep(isOllama ? 1 : 0, data.message || '');
-                } else if (data.event === 'done') {
-                  setStatus('');
-                  progressStepsEl.style.display = 'none';
-                  finishChatProgressList();
-                  appendMessage('assistant', data.response || '');
-                  if (Array.isArray(data.history)) conversationHistory = data.history;
-                } else if (data.event === 'error') {
-                  setStatus(data.error || 'Error', true);
-                  finishChatProgressList();
-                  appendMessage('assistant', data.error || 'Something went wrong.');
-                }
-              } catch (_) {}
-            }
-          }
-          if (buffer.trim()) {
-            try {
-              const data = JSON.parse(buffer);
-              if (data.event === 'done') {
-                setStatus('');
-                progressStepsEl.style.display = 'none';
-                finishChatProgressList();
-                appendMessage('assistant', data.response || '');
-                if (Array.isArray(data.history)) conversationHistory = data.history;
-              } else if (data.event === 'error') {
-                setStatus(data.error || 'Error', true);
-                appendMessage('assistant', data.error || 'Something went wrong.');
-              }
-            } catch (_) {}
-          }
-          setStatus('');
-          progressStepsEl.style.display = 'none';
-        } catch (e) {
-          setStatus('Network error: ' + e.message, true);
-          finishChatProgressList();
-          appendMessage('assistant', 'Could not reach the server.');
-        } finally {
-          sendBtn.disabled = false;
-        }
-      }
+    chatStatus.style.display = 'flex';
+    chatStatusText.innerText = 'Gathering context from codebase...';
+    chatSendBtn.disabled = true;
 
-      sendBtn.addEventListener('click', sendMessage);
-      inputEl.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          sendMessage();
-        }
+    try {
+      const resp = await fetch('/api/chat/stream', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ message: txt, history: chatHistory })
       });
 
-      const tabs = document.querySelectorAll('.tab');
-      const panels = document.querySelectorAll('.panel');
-      tabs.forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          const tabId = btn.dataset.tab;
-          tabs.forEach(function(b) {
-            b.classList.remove('active');
-            b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
-          });
-          panels.forEach(function(p) {
-            const isActive = p.id === 'panel-' + tabId;
-            p.classList.toggle('active', isActive);
-            p.hidden = !isActive;
-          });
-          btn.classList.add('active');
-          btn.setAttribute('aria-selected', 'true');
-        });
-      });
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-      const reviewPathsEl = document.getElementById('reviewPaths');
-      const reviewFocusEl = document.getElementById('reviewFocus');
-      const runReviewBtn = document.getElementById('runReview');
-      const reviewStatusEl = document.getElementById('reviewStatus');
-      const reviewResultsEl = document.getElementById('reviewResults');
-      const reviewStatusWrapEl = document.getElementById('reviewStatusWrap');
-      const reviewResultsContainer = reviewResultsEl.querySelector('.container');
-      const reviewProgressLogEl = document.getElementById('reviewProgressLog');
-      const reviewSidePanelEl = document.getElementById('reviewSidePanel');
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
-      function addReviewProgressStep(label, state, detail) {
-        reviewProgressLogEl.hidden = false;
-        reviewSidePanelEl.setAttribute('data-has-steps', 'true');
-        var li = document.createElement('li');
-        li.className = 'review-progress-step ' + (state || 'active');
-        var icon = '<span class="icon">' + (state === 'done' ? '<span class="check">✓</span>' : '<span class="spinner"></span>') + '</span>';
-        var text = '<span class="label">' + escapeHtml(label) + '</span>';
-        if (detail) text += '<span class="detail">' + escapeHtml(detail) + '</span>';
-        li.innerHTML = icon + text;
-        reviewProgressLogEl.appendChild(li);
-      }
-
-      function markLastReviewStepDone(detail) {
-        var last = reviewProgressLogEl.querySelector('.review-progress-step.active');
-        if (!last) return;
-        last.classList.remove('active');
-        last.classList.add('done');
-        last.querySelector('.icon').innerHTML = '<span class="check">✓</span>';
-        if (detail) {
-          var d = last.querySelector('.detail');
-          if (d) d.textContent = detail;
-          else {
-            var span = document.createElement('span');
-            span.className = 'detail';
-            span.textContent = detail;
-            last.appendChild(span);
-          }
-        }
-      }
-
-      function setReviewStatus(text, isError) {
-        reviewStatusEl.innerHTML = text ? escapeHtml(text) : '';
-        reviewStatusEl.className = 'status status-text' + (isError ? ' error' : '');
-        reviewStatusEl.style.display = text ? 'flex' : 'none';
-        if (text && !isError) {
-          reviewStatusWrapEl.classList.add('in-progress');
-          reviewStatusWrapEl.style.display = 'flex';
-        } else {
-          reviewStatusWrapEl.classList.remove('in-progress');
-          reviewStatusWrapEl.style.display = text ? 'flex' : 'none';
-        }
-      }
-
-      async function runReview() {
-        const pathsStr = reviewPathsEl.value.trim();
-        const paths = pathsStr ? pathsStr.split(/\s*,\s*/).map(function(s) { return s.trim(); }).filter(Boolean) : [];
-        const focus = reviewFocusEl.value.trim();
-        runReviewBtn.disabled = true;
-        reviewResultsContainer.innerHTML = '';
-        reviewProgressLogEl.innerHTML = '';
-        reviewProgressLogEl.hidden = true;
-        reviewSidePanelEl.removeAttribute('data-has-steps');
-        setReviewStatus('Starting code review…');
-        addReviewProgressStep('Starting code review…', 'active');
-        try {
-          const res = await fetch('/api/review/stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ paths: paths, focus: focus })
-          });
-          if (!res.ok) {
-            const data = await res.json().catch(function() { return {}; });
-            setReviewStatus(data.error || 'Request failed', true);
-            return;
-          }
-          const reader = res.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = '';
-          let summary = '';
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-            for (const line of lines) {
-              if (!line.trim()) continue;
-              try {
-                const data = JSON.parse(line);
-                if (data.event === 'status') {
-                  var msg = data.message || '';
-                  setReviewStatus(msg);
-                  if (msg.indexOf('Starting') !== -1) {
-                    /* first step already added when review started */
-                  } else if (msg.indexOf('Planning') !== -1) {
-                    markLastReviewStepDone();
-                    addReviewProgressStep(msg, 'active');
-                  } else if (msg.indexOf('Summarizing') !== -1) {
-                    markLastReviewStepDone();
-                    addReviewProgressStep('Summarizing…', 'active');
-                  } else if (msg) {
-                    markLastReviewStepDone();
-                    addReviewProgressStep(msg, 'active');
-                  }
-                } else if (data.event === 'review_file') {
-                  markLastReviewStepDone();
-                  setReviewStatus('Reviewing ' + (data.path || '') + '…');
-                  addReviewProgressStep('Reviewing ' + (data.path || ''), 'active');
-                } else if (data.event === 'findings') {
-                  var count = (data.findings && data.findings.length) ? data.findings.length : 0;
-                  markLastReviewStepDone(count ? count + ' findings' : null);
-                  (data.findings || []).forEach(function(f) {
-                    const div = document.createElement('div');
-                    div.className = 'review-finding ' + (f.severity || 'suggestion');
-                    div.innerHTML = '<span class="path">' + escapeHtml(f.file || '') + (f.line ? ':' + f.line : '') + '</span> <span class="rule">' + escapeHtml(f.rule || '') + '</span> ' + escapeHtml(f.message || '');
-                    reviewResultsContainer.appendChild(div);
-                  });
-                } else if (data.event === 'summary') {
-                  summary = data.summary || '';
-                  markLastReviewStepDone();
-                  var sumDiv = document.createElement('div');
-                  sumDiv.className = 'review-summary';
-                  sumDiv.textContent = summary;
-                  reviewResultsContainer.insertBefore(sumDiv, reviewResultsContainer.firstChild);
-                } else if (data.event === 'done') {
-                  markLastReviewStepDone();
-                  addReviewProgressStep('Done', 'done');
-                  setReviewStatus('');
-                  if (data.summary && !summary) {
-                    const sumDiv = document.createElement('div');
-                    sumDiv.className = 'review-summary';
-                    sumDiv.textContent = data.summary;
-                    reviewResultsContainer.insertBefore(sumDiv, reviewResultsContainer.firstChild);
-                  }
-                } else if (data.event === 'error') {
-                  markLastReviewStepDone();
-                  addReviewProgressStep('Error: ' + (data.error || 'Error'), 'done');
-                  setReviewStatus(data.error || 'Error', true);
-                }
-              } catch (_) {}
-            }
-          }
-        if (buffer.trim()) {
+        for (const line of lines) {
+          if (!line.trim()) continue;
           try {
-            const data = JSON.parse(buffer);
-            if (data.event === 'done') {
-              markLastReviewStepDone();
-              addReviewProgressStep('Done', 'done');
-              if (data.summary) {
-                var sumDiv = document.createElement('div');
-                sumDiv.className = 'review-summary';
-                sumDiv.textContent = data.summary;
-                reviewResultsContainer.insertBefore(sumDiv, reviewResultsContainer.firstChild);
-              }
+            const data = JSON.parse(line);
+            if (data.event === 'status') {
+              chatStatusText.innerText = data.message;
+            } else if (data.event === 'done') {
+              chatStatus.style.display = 'none';
+              appendChatMsg('assistant', data.response);
+              if (data.history) chatHistory = data.history;
             } else if (data.event === 'error') {
-              markLastReviewStepDone();
-              addReviewProgressStep('Error: ' + (data.error || 'Error'), 'done');
-              setReviewStatus(data.error || 'Error', true);
+              chatStatusText.innerText = 'Error: ' + data.error;
+              chatStatus.style.color = 'var(--error)';
             }
-          } catch (_) {}
+          } catch(e) {}
         }
-        setReviewStatus('');
-        } catch (e) {
-          setReviewStatus('Network error: ' + e.message, true);
-        } finally {
-          runReviewBtn.disabled = false;
+      }
+    } catch (err) {
+      chatStatusText.innerText = 'Network Error';
+    } finally {
+      chatSendBtn.disabled = false;
+    }
+  }
+
+  chatSendBtn.addEventListener('click', sendChat);
+  chatInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChat();
+    }
+  });
+
+  // -- Review Logic --
+  const startReviewBtn = $('runReviewBtn');
+  const reviewTimeline = $('reviewTimeline');
+  const reviewResultsArea = $('reviewResultsArea');
+
+  function addTimelineItem(label, detail, state='active') {
+    const div = document.createElement('div');
+    div.className = `timeline-item ${state}`;
+    div.innerHTML = `
+      <div class="timeline-icon">${state === 'done' ? '✓' : ''}</div>
+      <div class="timeline-content">
+        <div class="timeline-label">${escapeHtml(label)}</div>
+        <div class="timeline-detail">${escapeHtml(detail)}</div>
+      </div>
+    `;
+    reviewTimeline.appendChild(div);
+    reviewTimeline.scrollTop = reviewTimeline.scrollHeight;
+    return div;
+  }
+
+  function markLastTimelineDone() {
+    const items = reviewTimeline.querySelectorAll('.timeline-item.active');
+    if (items.length > 0) {
+      const last = items[items.length - 1];
+      last.classList.remove('active');
+      last.classList.add('done');
+      last.querySelector('.timeline-icon').innerText = '✓';
+    }
+  }
+
+  async function runReview() {
+    const paths = $('reviewPaths').value.split(',').map(s=>s.trim()).filter(Boolean);
+    const focus = $('reviewFocus').value.trim();
+
+    startReviewBtn.disabled = true;
+    reviewTimeline.innerHTML = '';
+    reviewResultsArea.innerHTML = '';
+
+    addTimelineItem('Initialize', 'Starting review agent...', 'done');
+
+    try {
+      const resp = await fetch('/api/review/stream', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ paths, focus })
+      });
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const data = JSON.parse(line);
+
+            if (data.event === 'status') {
+               markLastTimelineDone();
+               addTimelineItem('Planning', data.message);
+            } else if (data.event === 'review_file') {
+               markLastTimelineDone();
+               addTimelineItem('Reviewing', data.path.split('/').pop(), 'active');
+            } else if (data.event === 'findings') {
+               // Render findings for this file
+               const findingsHtml = data.findings.map(f => `
+                 <div class="finding-card ${f.severity}">
+                   <div class="finding-header">
+                     <span class="finding-rule">${escapeHtml(f.rule || 'Issue')}</span>
+                     <span class="finding-path">${escapeHtml(data.path)}:${f.line}</span>
+                   </div>
+                   <div>${escapeHtml(f.message)}</div>
+                 </div>
+               `).join('');
+
+               if (findingsHtml) {
+                 const container = document.createElement('div');
+                 container.innerHTML = `<h3 style="margin:20px 0 10px; font-size:1rem; opacity:0.8">Findings for ${escapeHtml(data.path)}</h3>${findingsHtml}`;
+                 reviewResultsArea.appendChild(container);
+               }
+            } else if (data.event === 'summary') {
+               markLastTimelineDone();
+               addTimelineItem('Summary', 'Finalizing report...', 'done');
+
+               const summaryDiv = document.createElement('div');
+               summaryDiv.className = 'glass config-card';
+               summaryDiv.style.marginTop = '20px';
+               summaryDiv.innerHTML = `<h2>Review Summary</h2><div style="line-height:1.6">${DOMPurify.sanitize(marked.parse(data.summary))}</div>`;
+               reviewResultsArea.prepend(summaryDiv);
+            } else if (data.event === 'done') {
+               markLastTimelineDone();
+               addTimelineItem('Complete', 'Review finished', 'done');
+               startReviewBtn.disabled = false;
+            }
+
+          } catch(e) {}
         }
       }
 
-      runReviewBtn.addEventListener('click', runReview);
-    })();
-  </script>
+    } catch (e) {
+      alert('Error running review');
+      startReviewBtn.disabled = false;
+    }
+  }
+
+  startReviewBtn.addEventListener('click', runReview);
+
+</script>
 </body>
 </html>
