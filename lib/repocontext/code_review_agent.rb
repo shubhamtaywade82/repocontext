@@ -2,7 +2,10 @@
 
 module RepoContext
   # Agentic code review loop: plan → execute → observe until done.
-  # Depends on abstractions: path_source (duck type: candidate_paths), planner, executor, summary_writer.
+  # Dependencies (injected): path_source (duck: #candidate_paths), planner (duck: #next_step(state, paths) => ReviewPlanStep),
+  #   executor (duck: #execute(plan_step, file_content:, path:)), summary_writer (duck: #summarize(state)).
+  # Event callback: optional block (event_name, iteration, payload). Events: :init, :plan, :review_file, :review_done,
+  #   :summarize, :summary_done, :done. Payload varies by event (e.g. paths, FileReviewOutcome, ReviewState).
   class CodeReviewAgent
     # Common patterns to exclude from code review
     EXCLUDED_PATTERNS = [

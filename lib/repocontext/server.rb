@@ -257,18 +257,59 @@ module RepoContext
 
       def suggested_questions
         questions = [
+          # Understanding the codebase
           "Summarize this repository",
+          "Explain the architecture",
+          "What does this project do?",
+
+          # Code quality & improvement
           "Identify potential technical debt",
-          "Explain the architecture"
+          "Find code duplication patterns",
+          "Suggest performance optimizations",
+          "Review error handling practices",
+
+          # Development help
+          "How do I add a new feature?",
+          "Explain the authentication flow",
+          "Where should I add logging?",
+          "How is data validated?"
         ]
 
         # Context-aware inclusions
-        if File.exist?(File.join(settings.root, "Gemfile"))
-          questions << "Explain the dependencies in Gemfile"
+        root = settings.root
+
+        # Ruby-specific
+        if File.exist?(File.join(root, "Gemfile"))
+          questions += [
+            "Explain the dependencies in Gemfile",
+            "What gems are used and why?"
+          ]
         end
 
-        if Dir.exist?(File.join(settings.root, "spec")) || Dir.exist?(File.join(settings.root, "test"))
-          questions << "How do I run the tests?"
+        # Testing
+        if Dir.exist?(File.join(root, "spec")) || Dir.exist?(File.join(root, "test"))
+          questions += [
+            "How do I run the tests?",
+            "What's the test coverage?"
+          ]
+        end
+
+        # Package.json (JavaScript/Node)
+        if File.exist?(File.join(root, "package.json"))
+          questions += [
+            "Explain the npm scripts",
+            "What build tools are used?"
+          ]
+        end
+
+        # Docker
+        if File.exist?(File.join(root, "Dockerfile"))
+          questions << "Explain the Docker setup"
+        end
+
+        # Database
+        if Dir.exist?(File.join(root, "db")) || Dir.exist?(File.join(root, "migrations"))
+          questions << "Explain the database schema"
         end
 
         questions.uniq

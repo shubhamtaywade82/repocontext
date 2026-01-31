@@ -56,6 +56,9 @@ module RepoContext
     LOG_PREVIEW_LENGTH = ENV.fetch("LOG_PREVIEW_LENGTH", "80").to_i
     LOG_FOCUS_MAX_CHARS = ENV.fetch("LOG_FOCUS_MAX_CHARS", "60").to_i
 
+    # Logging: INFO = normal flow (requests, steps); DEBUG = verbose/diagnostics; WARN = recoverable (fallbacks);
+    # ERROR = failure (Ollama errors, internal errors). Use log.info { "..." } blocks to avoid work when level is above INFO.
+
     # Set by SIGINT handler; long-running loops (e.g. code review) check this to exit cleanly.
     def self.shutdown_requested?
       @shutdown_requested == true
