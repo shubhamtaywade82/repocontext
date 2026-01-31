@@ -75,7 +75,7 @@ Create a `.env` (or export) for overrides:
 | OLLAMA_BASE_URL           | Ollama API URL                      | http://192.168.1.4:11434    |
 | OLLAMA_MODEL              | Primary reasoning (chat, planning)  | llama3.1:8b-instruct-q4_K_M |
 | OLLAMA_CODE_MODEL         | Code review / generation            | qwen2.5-coder:7b            |
-| OLLAMA_EMBED_MODEL        | Embeddings (RAG)                    | nomic-embed-text            |
+| OLLAMA_EMBED_MODEL        | Embeddings (RAG)                    | nomic-embed-text:latest     |
 | OLLAMA_TEMPERATURE        | Chat temperature                    | 0.5                         |
 | OLLAMA_TIMEOUT            | Request timeout (seconds)           | 60                          |
 | DISCOVERY_AGENT_ENABLED   | Use LLM to pick extra files         | true                        |

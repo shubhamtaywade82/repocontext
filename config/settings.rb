@@ -31,7 +31,7 @@ module RepoContext
     OLLAMA_CODE_MODEL = resolve_model("OLLAMA_CODE_MODEL", DEFAULT_OLLAMA_CODE_MODEL)
     OLLAMA_TEMPERATURE = ENV.fetch("OLLAMA_TEMPERATURE", "0.5")
     OLLAMA_TIMEOUT = ENV.fetch("OLLAMA_TIMEOUT", 60).to_i
-    OLLAMA_EMBED_MODEL = ENV.fetch("OLLAMA_EMBED_MODEL", "nomic-embed-text")
+    OLLAMA_EMBED_MODEL = ENV.fetch("OLLAMA_EMBED_MODEL", "nomic-embed-text:latest")
 
     EMBED_CONTEXT_ENABLED = ENV.fetch("EMBED_CONTEXT_ENABLED", "true").downcase == "true"
     EMBED_TOP_K = ENV.fetch("EMBED_TOP_K", 5).to_i
