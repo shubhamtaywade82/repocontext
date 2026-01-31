@@ -42,6 +42,15 @@ module RepoContext
 
     LOG_LEVEL = (ENV["LOG_LEVEL"] || "info").downcase
 
+    # Set by SIGINT handler; long-running loops (e.g. code review) check this to exit cleanly.
+    def self.shutdown_requested?
+      @shutdown_requested == true
+    end
+
+    def self.request_shutdown!
+      @shutdown_requested = true
+    end
+
     def self.logger
       @logger ||= begin
         l = Logger.new($stdout)

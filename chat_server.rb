@@ -10,6 +10,17 @@ require "json"
 require "sinatra"
 require "repocontext"
 
+# Allow Ctrl+C to stop the process even when a request is blocked (e.g. review stream in Ollama).
+# First Ctrl+C sets a flag so the review loop can exit between steps; second Ctrl+C forces exit.
+Signal.trap("INT") do
+  if RepoContext::Settings.shutdown_requested?
+    $stderr.puts "\nForce exit."
+    exit(130)
+  end
+  RepoContext::Settings.request_shutdown!
+  $stderr.puts "\nShutting down... (Ctrl+C again to force exit)"
+end
+
 set :port, ENV.fetch("PORT", 4567).to_i
 set :views, File.join(__dir__, "views")
 

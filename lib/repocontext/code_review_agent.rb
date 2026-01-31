@@ -24,6 +24,11 @@ module RepoContext
 
       Settings::REVIEW_MAX_ITERATIONS.times do
         yield_event(event_callback, :plan, current_state.iteration, nil)
+        if Settings.shutdown_requested?
+          @log.info { "shutdown requested, stopping review" }
+          yield_event(event_callback, :done, current_state.iteration, current_state)
+          return current_state
+        end
 
         plan_step = @planner.next_step(current_state, paths_to_review)
         if plan_step.done?
@@ -40,6 +45,10 @@ module RepoContext
           paths_to_review,
           event_callback
         )
+        if Settings.shutdown_requested?
+          yield_event(event_callback, :done, current_state.iteration, current_state)
+          return current_state
+        end
       end
 
       yield_event(event_callback, :done, current_state.iteration, current_state)
@@ -73,6 +82,7 @@ module RepoContext
       end
 
       yield_event(event_callback, :review_file, current_state.iteration, file_path)
+      return current_state if Settings.shutdown_requested?
 
       file_content = read_file_content(file_path)
       unless file_content
