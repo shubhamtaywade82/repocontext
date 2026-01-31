@@ -27,8 +27,6 @@ def discovery_path_selector
 end
 
 def embedding_context_builder
-  return nil unless RepoContext::Settings::EMBED_CONTEXT_ENABLED
-
   @embedding_context_builder ||= RepoContext::EmbeddingContextBuilder.new(
     client: ollama_client,
     repo_root: RepoContext::Settings::REPO_ROOT,

@@ -22,11 +22,12 @@ module RepoContext
     OLLAMA_TIMEOUT = ENV.fetch("OLLAMA_TIMEOUT", 60).to_i
     OLLAMA_EMBED_MODEL = ENV.fetch("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 
-    EMBED_CONTEXT_ENABLED = ENV.fetch("EMBED_CONTEXT_ENABLED", "false").downcase == "true"
+    EMBED_CONTEXT_ENABLED = ENV.fetch("EMBED_CONTEXT_ENABLED", "true").downcase == "true"
     EMBED_TOP_K = ENV.fetch("EMBED_TOP_K", 5).to_i
     EMBED_CHUNK_SIZE = ENV.fetch("EMBED_CHUNK_SIZE", 2000).to_i
     EMBED_CHUNK_OVERLAP = ENV.fetch("EMBED_CHUNK_OVERLAP", 200).to_i
-    EMBED_MAX_CHUNKS = ENV.fetch("EMBED_MAX_CHUNKS", 100).to_i
+    EMBED_MAX_CHUNKS = ENV.fetch("EMBED_MAX_CHUNKS", 60).to_i
+    EMBED_MIN_QUESTION_LENGTH = ENV.fetch("EMBED_MIN_QUESTION_LENGTH", "3").to_i
 
     LOG_LEVEL = (ENV["LOG_LEVEL"] || "info").downcase
 

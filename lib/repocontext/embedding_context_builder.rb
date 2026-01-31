@@ -12,12 +12,15 @@ module RepoContext
     end
 
     def context_for_question(question, max_chars:)
-      return "" unless Settings::EMBED_CONTEXT_ENABLED && Settings::EMBED_TOP_K.positive?
+      return "" unless Settings::EMBED_CONTEXT_ENABLED
+      return "" if Settings::EMBED_TOP_K <= 0
+      return "" if max_chars <= 0
+      return "" unless question_worth_embedding?(question)
 
       index = build_index
       return "" if index.empty?
 
-      query_vec = @client.embeddings.embed(model: Settings::OLLAMA_EMBED_MODEL, input: question)
+      query_vec = @client.embeddings.embed(model: Settings::OLLAMA_EMBED_MODEL, input: question.to_s.strip)
       top_chunks = top_chunks_by_similarity(index, query_vec)
       assemble_context(top_chunks, max_chars)
     rescue Ollama::Error => e
@@ -26,6 +29,12 @@ module RepoContext
     end
 
     private
+
+    def question_worth_embedding?(question)
+      return false if question.nil?
+      stripped = question.to_s.strip
+      stripped.size >= Settings::EMBED_MIN_QUESTION_LENGTH
+    end
 
     def build_index
       @index_cache[:mutex].synchronize do

@@ -15,7 +15,7 @@ GEM
       bigdecimal
       csv
       json-schema (~> 4.0)
-    public_suffix (6.0.2)
+    public_suffix (7.0.2)
     rack (2.2.21)
     rack-protection (3.2.0)
       base64 (>= 0.1.0)
@@ -30,7 +30,7 @@ GEM
     webrick (1.9.2)
 
 PLATFORMS
-  arm64-darwin-24
+  ruby
   x86_64-linux
 
 DEPENDENCIES
@@ -39,8 +39,25 @@ DEPENDENCIES
   sinatra (~> 3.0)
   webrick
 
+CHECKSUMS
+  addressable (2.8.8) sha256=7c13b8f9536cf6364c03b9d417c19986019e28f7c00ac8132da4eb0fe393b057
+  base64 (0.3.0) sha256=27337aeabad6ffae05c265c450490628ef3ebd4b67be58257393227588f5a97b
+  bigdecimal (4.0.1) sha256=8b07d3d065a9f921c80ceaea7c9d4ae596697295b584c296fe599dd0ad01c4a7
+  csv (3.3.5) sha256=6e5134ac3383ef728b7f02725d9872934f523cb40b961479f69cf3afa6c8e73f
+  dotenv (3.2.0) sha256=e375b83121ea7ca4ce20f214740076129ab8514cd81378161f11c03853fe619d
+  json-schema (4.3.1) sha256=d5e68dc32b94408d0b06ad04f9382ccbb6fe5a44910e066f8547f56c471a7825
+  mustermann (3.0.4) sha256=85fadcb6b3c6493a8b511b42426f904b7f27b282835502233dd154daab13aa22
+  ollama-client (0.2.6) sha256=8e7f500ffe120d1586cd7d8690b725c3e1c8b773c5e7e70c3cfc2c6b00ab1764
+  public_suffix (7.0.2) sha256=9114090c8e4e7135c1fd0e7acfea33afaab38101884320c65aaa0ffb8e26a857
+  rack (2.2.21) sha256=14e2f72f0765455fe424ff601588ac5ce84e95784f59e99251ffe1527152f739
+  rack-protection (3.2.0) sha256=3c74ba7fc59066453d61af9bcba5b6fe7a9b3dab6f445418d3b391d5ea8efbff
+  ruby2_keywords (0.0.5) sha256=ffd13740c573b7301cf7a2e61fc857b2a8e3d3aff32545d6f8300d8bae10e3ef
+  sinatra (3.2.0) sha256=6e727f4d034e87067d9aab37f328021d7c16722ffd293ef07b6e968915109807
+  tilt (2.7.0) sha256=0d5b9ba69f6a36490c64b0eee9f6e9aad517e20dcc848800a06eb116f08c6ab3
+  webrick (1.9.2) sha256=beb4a15fc474defed24a3bda4ffd88a490d517c9e4e6118c3edce59e45864131
+
 RUBY VERSION
-   ruby 3.1.7p261
+  ruby 3.3.4
 
 BUNDLED WITH
-   2.4.22
+  4.0.4

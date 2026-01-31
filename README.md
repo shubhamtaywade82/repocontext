@@ -22,7 +22,7 @@ Sinatra app that answers questions about a codebase using repo file contents and
 
 ### Chat
 
-Ask questions about the repo. Context is built from reference files, optional embeddings, and a discovery agent that picks extra files.
+Ask questions about the repo. Context is built from reference files, **embeddings** (RAG, on by default), and a discovery agent that picks extra files.
 
 ### Code Review
 
@@ -44,9 +44,10 @@ Agentic loop: the planner chooses the next file to review, the executor reviews 
 | ollama-client  | ~> 0.2   | Ollama API           |
 | dotenv         | (any)    | Optional .env loading|
 
-### Optional
+### Embeddings (on by default)
 
-- **Embeddings**: For RAG, set `EMBED_CONTEXT_ENABLED=true` and run `ollama pull nomic-embed-text`.
+- RAG uses embeddings to add relevant chunks per question. Run `ollama pull nomic-embed-text` before using.
+- Set `EMBED_CONTEXT_ENABLED=false` to disable. Tune `EMBED_TOP_K`, `EMBED_MAX_CHUNKS`, `EMBED_MIN_QUESTION_LENGTH` for efficiency.
 
 ---
 
@@ -76,7 +77,10 @@ Create a `.env` (or export) for overrides:
 | OLLAMA_TEMPERATURE      | Chat temperature                     | 0.5           |
 | OLLAMA_TIMEOUT          | Request timeout (seconds)            | 60            |
 | DISCOVERY_AGENT_ENABLED | Use LLM to pick extra files          | true          |
-| EMBED_CONTEXT_ENABLED   | Use embeddings for context           | false         |
+| EMBED_CONTEXT_ENABLED   | Use embeddings for context           | true          |
+| EMBED_TOP_K             | Max similar chunks to add per query  | 5             |
+| EMBED_MAX_CHUNKS        | Max chunks in index (efficiency)      | 60            |
+| EMBED_MIN_QUESTION_LENGTH | Min question length to run embed   | 3             |
 | REVIEW_MAX_ITERATIONS   | Max code review loop steps           | 15            |
 | REVIEW_MAX_PATHS        | Max paths per review                 | 20            |
 | REVIEW_FOCUS            | Default review focus                 | Clean Ruby focus string |
