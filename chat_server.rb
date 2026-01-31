@@ -61,7 +61,7 @@ def code_review_agent
     ),
     executor: RepoContext::ReviewStepExecutor.new(
       client: ollama_client,
-      model: settings.ollama_model,
+      model: RepoContext::Settings::OLLAMA_CODE_MODEL,
       logger: RepoContext::Settings.logger
     ),
     summary_writer: RepoContext::ReviewSummaryWriter.new(
@@ -84,7 +84,7 @@ configure do
     "chat server ready: port=#{settings.port}, context_path=#{RepoContext::Settings::REPO_ROOT}, " \
     "discovery=#{RepoContext::Settings::DISCOVERY_AGENT_ENABLED}, embed=#{RepoContext::Settings::EMBED_CONTEXT_ENABLED}, " \
     "context_max=#{RepoContext::Settings::CONTEXT_MAX_CHARS}, ollama=#{RepoContext::Settings::OLLAMA_BASE_URL}, " \
-    "model=#{RepoContext::Settings::OLLAMA_MODEL}"
+    "model=#{RepoContext::Settings::OLLAMA_MODEL}, code_model=#{RepoContext::Settings::OLLAMA_CODE_MODEL}, embed_model=#{RepoContext::Settings::OLLAMA_EMBED_MODEL}"
   end
 end
 
@@ -102,6 +102,7 @@ end
 
 def write_stream_event(stream_yielder, event_name, event_data = {})
   stream_yielder << stream_event_line(event_name, event_data)
+  stream_yielder.flush if stream_yielder.respond_to?(:flush)
 end
 
 def parse_chat_request
@@ -171,8 +172,10 @@ post "/api/chat/stream" do
   user_message, message_history = parse_chat_request
   return json_error_response(422, "message is required") if user_message.empty?
 
-  chat_stream_enumerator = build_chat_stream_enumerator(user_message, message_history)
-  [200, { "Content-Type" => "application/x-ndjson; charset=utf-8" }, chat_stream_enumerator]
+  content_type "application/x-ndjson", charset: "utf-8"
+  stream do |out|
+    build_chat_stream_enumerator(user_message, message_history, out)
+  end
 rescue JSON::ParserError
   json_error_response(422, "Invalid JSON body")
 end
@@ -198,30 +201,30 @@ end
 
 post "/api/review/stream" do
   review_paths, review_focus = parse_review_request
-  review_stream_enumerator = build_review_stream_enumerator(review_paths, review_focus)
-  [200, { "Content-Type" => "application/x-ndjson; charset=utf-8" }, review_stream_enumerator]
+  body = Enumerator.new do |yielder|
+    build_review_stream_enumerator(review_paths, review_focus, yielder)
+  end
+  [200, { "Content-Type" => "application/x-ndjson; charset=utf-8" }, body]
 rescue JSON::ParserError
   json_error_response(422, "Invalid JSON body")
 end
 
 # --- Stream builders ---
 
-def build_chat_stream_enumerator(user_message, message_history)
-  Enumerator.new do |stream_yielder|
-    write_stream_event(stream_yielder, "status", message: "Gathering context…")
-    codebase_context = repo_context_builder.gather(user_message)
-    write_stream_event(stream_yielder, "status", message: "Asking Ollama…")
-    reply_text = repo_chat_service.ask(
-      user_message,
-      repo_context: codebase_context,
-      conversation_history: message_history
-    )
-    updated_history = append_exchange_to_history(message_history, user_message, reply_text)
-    write_stream_event(stream_yielder, "done", response: reply_text, history: updated_history)
-  rescue Ollama::Error => e
-    RepoContext::Settings.logger.error { "Ollama error: #{e.message}" }
-    write_stream_event(stream_yielder, "error", error: "Ollama error: #{e.message}")
-  end
+def build_chat_stream_enumerator(user_message, message_history, out)
+  write_stream_event(out, "status", message: "Gathering context…")
+  codebase_context = repo_context_builder.gather(user_message)
+  write_stream_event(out, "status", message: "Asking Ollama…")
+  reply_text = repo_chat_service.ask(
+    user_message,
+    repo_context: codebase_context,
+    conversation_history: message_history
+  )
+  updated_history = append_exchange_to_history(message_history, user_message, reply_text)
+  write_stream_event(out, "done", response: reply_text, history: updated_history)
+rescue Ollama::Error => e
+  RepoContext::Settings.logger.error { "Ollama error: #{e.message}" }
+  write_stream_event(out, "error", error: "Ollama error: #{e.message}")
 end
 
 def append_exchange_to_history(message_history, user_message, reply_text)
@@ -231,32 +234,30 @@ def append_exchange_to_history(message_history, user_message, reply_text)
   ]
 end
 
-def build_review_stream_enumerator(review_paths, review_focus)
-  Enumerator.new do |stream_yielder|
-    write_stream_event(stream_yielder, "status", message: "Starting code review…")
-    code_review_agent.run_with_events(request_paths: review_paths, focus: review_focus) do |event_name, iteration, payload|
-      emit_review_stream_event(stream_yielder, event_name, iteration, payload)
-    end
-  rescue Ollama::Error => e
-    RepoContext::Settings.logger.error { "Ollama error: #{e.message}" }
-    write_stream_event(stream_yielder, "error", error: "Ollama error: #{e.message}")
+def build_review_stream_enumerator(review_paths, review_focus, out)
+  write_stream_event(out, "status", message: "Starting code review…")
+  code_review_agent.run_with_events(request_paths: review_paths, focus: review_focus) do |event_name, iteration, payload|
+    emit_review_stream_event(out, event_name, iteration, payload)
   end
+rescue Ollama::Error => e
+  RepoContext::Settings.logger.error { "Ollama error: #{e.message}" }
+  write_stream_event(out, "error", error: "Ollama error: #{e.message}")
 end
 
-def emit_review_stream_event(stream_yielder, event_name, iteration, payload)
+def emit_review_stream_event(out, event_name, iteration, payload)
   case event_name
   when :plan
-    write_stream_event(stream_yielder, "status", message: "Planning step #{iteration + 1}…")
+    write_stream_event(out, "status", message: "Planning step #{iteration + 1}…")
   when :review_file
-    write_stream_event(stream_yielder, "review_file", path: payload)
+    write_stream_event(out, "review_file", path: payload)
   when :review_done
-    write_stream_event(stream_yielder, "findings", findings: payload.findings, path: payload.reviewed_path)
+    write_stream_event(out, "findings", findings: payload.findings, path: payload.reviewed_path)
   when :summarize
-    write_stream_event(stream_yielder, "status", message: "Summarizing…")
+    write_stream_event(out, "status", message: "Summarizing…")
   when :summary_done
-    write_stream_event(stream_yielder, "summary", summary: payload.observation)
+    write_stream_event(out, "summary", summary: payload.observation)
   when :done
-    write_stream_event(stream_yielder, "done",
+    write_stream_event(out, "done",
       findings: payload.findings,
       summary: payload.observations.last,
       reviewed_paths: payload.reviewed_paths,

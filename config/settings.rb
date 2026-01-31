@@ -17,7 +17,18 @@ module RepoContext
     REVIEW_FOCUS = ENV.fetch("REVIEW_FOCUS", "Clean Ruby: naming, single responsibility, short methods, guard clauses").freeze
 
     OLLAMA_BASE_URL = ENV.fetch("OLLAMA_BASE_URL", "http://192.168.1.4:11434")
-    OLLAMA_MODEL = ENV.fetch("OLLAMA_MODEL", "llama3.1:8b")
+    DEFAULT_OLLAMA_MODEL = "llama3.1:8b-instruct-q4_K_M"
+    DEFAULT_OLLAMA_CODE_MODEL = "qwen2.5-coder:7b"
+    DEPRECATED_MODEL_ALIASES = %w[nemesis-coder nemesis-coder:latest].freeze
+
+    def self.resolve_model(env_key, default)
+      raw = ENV.fetch(env_key, default)
+      DEPRECATED_MODEL_ALIASES.include?(raw.to_s.strip) ? default : raw
+    end
+    private_class_method :resolve_model
+
+    OLLAMA_MODEL = resolve_model("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+    OLLAMA_CODE_MODEL = resolve_model("OLLAMA_CODE_MODEL", DEFAULT_OLLAMA_CODE_MODEL)
     OLLAMA_TEMPERATURE = ENV.fetch("OLLAMA_TEMPERATURE", "0.5")
     OLLAMA_TIMEOUT = ENV.fetch("OLLAMA_TIMEOUT", 60).to_i
     OLLAMA_EMBED_MODEL = ENV.fetch("OLLAMA_EMBED_MODEL", "nomic-embed-text")

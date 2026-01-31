@@ -33,16 +33,16 @@ Agentic loop: the planner chooses the next file to review, the executor reviews 
 ## Dependencies
 
 - **Ruby** ≥ 3.0
-- **Ollama** running and reachable (e.g. `ollama serve`). Pull a model: `ollama pull llama3.1:8b`
+- **Ollama** running and reachable (e.g. `ollama serve`). Pull a model: `ollama pull llama3.1:8b-instruct-q4_K_M`
 
 ### Required gems (see Gemfile / Gemfile.lock for exact versions)
 
-| Gem            | Version  | Purpose              |
-|----------------|----------|----------------------|
-| sinatra        | ~> 3.0   | Web app              |
-| webrick        | (default)| HTTP server          |
-| ollama-client  | ~> 0.2   | Ollama API           |
-| dotenv         | (any)    | Optional .env loading|
+| Gem           | Version   | Purpose               |
+| ------------- | --------- | --------------------- |
+| sinatra       | ~> 3.0    | Web app               |
+| webrick       | (default) | HTTP server           |
+| ollama-client | ~> 0.2    | Ollama API            |
+| dotenv        | (any)     | Optional .env loading |
 
 ### Embeddings (on by default)
 
@@ -67,24 +67,26 @@ No database or migrations; the app uses the filesystem and Ollama only.
 
 Create a `.env` (or export) for overrides:
 
-| Variable Name           | Purpose                              | Default Value |
-|-------------------------|--------------------------------------|---------------|
-| REPO_CONTEXT_PATH       | Repo root for context                | Project root  |
-| CONTEXT_FILES           | Comma-separated files loaded first   | README.md,Gemfile |
-| CONTEXT_MAX_CHARS       | Max context size                     | 35000         |
-| OLLAMA_BASE_URL         | Ollama API URL                       | http://192.168.1.4:11434 |
-| OLLAMA_MODEL            | Model name                           | llama3.1:8b   |
-| OLLAMA_TEMPERATURE      | Chat temperature                     | 0.5           |
-| OLLAMA_TIMEOUT          | Request timeout (seconds)            | 60            |
-| DISCOVERY_AGENT_ENABLED | Use LLM to pick extra files          | true          |
-| EMBED_CONTEXT_ENABLED   | Use embeddings for context           | true          |
-| EMBED_TOP_K             | Max similar chunks to add per query  | 5             |
-| EMBED_MAX_CHUNKS        | Max chunks in index (efficiency)      | 60            |
-| EMBED_MIN_QUESTION_LENGTH | Min question length to run embed   | 3             |
-| REVIEW_MAX_ITERATIONS   | Max code review loop steps           | 15            |
-| REVIEW_MAX_PATHS        | Max paths per review                 | 20            |
-| REVIEW_FOCUS            | Default review focus                 | Clean Ruby focus string |
-| LOG_LEVEL               | debug or info                        | info          |
+| Variable Name             | Purpose                             | Default Value               |
+| ------------------------- | ----------------------------------- | --------------------------- |
+| REPO_CONTEXT_PATH         | Repo root for context               | Project root                |
+| CONTEXT_FILES             | Comma-separated files loaded first  | README.md,Gemfile           |
+| CONTEXT_MAX_CHARS         | Max context size                    | 35000                       |
+| OLLAMA_BASE_URL           | Ollama API URL                      | http://192.168.1.4:11434    |
+| OLLAMA_MODEL              | Primary reasoning (chat, planning)  | llama3.1:8b-instruct-q4_K_M |
+| OLLAMA_CODE_MODEL         | Code review / generation            | qwen2.5-coder:7b            |
+| OLLAMA_EMBED_MODEL        | Embeddings (RAG)                    | nomic-embed-text            |
+| OLLAMA_TEMPERATURE        | Chat temperature                    | 0.5                         |
+| OLLAMA_TIMEOUT            | Request timeout (seconds)           | 60                          |
+| DISCOVERY_AGENT_ENABLED   | Use LLM to pick extra files         | true                        |
+| EMBED_CONTEXT_ENABLED     | Use embeddings for context          | true                        |
+| EMBED_TOP_K               | Max similar chunks to add per query | 5                           |
+| EMBED_MAX_CHUNKS          | Max chunks in index (efficiency)    | 60                          |
+| EMBED_MIN_QUESTION_LENGTH | Min question length to run embed    | 3                           |
+| REVIEW_MAX_ITERATIONS     | Max code review loop steps          | 15                          |
+| REVIEW_MAX_PATHS          | Max paths per review                | 20                          |
+| REVIEW_FOCUS              | Default review focus                | Clean Ruby focus string     |
+| LOG_LEVEL                 | debug or info                       | info                        |
 
 ---
 

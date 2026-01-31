@@ -95,7 +95,8 @@ module RepoContext
       paths_to_review.find do |candidate_path|
         candidate_path == target_path ||
           candidate_path.end_with?("/#{target_path}") ||
-          File.basename(candidate_path) == target_path
+          File.basename(candidate_path) == target_path ||
+          File.basename(candidate_path) == File.basename(target_path)
       end
     end
 

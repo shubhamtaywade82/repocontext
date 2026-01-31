@@ -5,11 +5,11 @@
 
 require "ollama_client"
 require "json"
-ENV["OLLAMA_MODEL"] = "llama3.1:8b"
+ENV["OLLAMA_MODEL"] = "llama3.1:8b-instruct-q4_K_M"
 ENV["OLLAMA_TEMPERATURE"] = "0.5"
 ENV["OLLAMA_TIMEOUT"] = "60"
 BASE_URL = ENV.fetch("OLLAMA_BASE_URL", "http://192.168.1.4:11434")
-OLLAMA_MODEL = ENV.fetch("OLLAMA_MODEL", "llama3.1:8b")
+OLLAMA_MODEL = ENV.fetch("OLLAMA_MODEL", "llama3.1:8b-instruct-q4_K_M")
 OLLAMA_TEMPERATURE = ENV.fetch("OLLAMA_TEMPERATURE", 0.5)
 OLLAMA_TIMEOUT = ENV.fetch("OLLAMA_TIMEOUT", 60)
 
@@ -23,7 +23,7 @@ def client_for(model:, temperature:, timeout:)
   Ollama::Client.new(config: config)
 end
 
-model = ENV.fetch("OLLAMA_MODEL", "llama3.1:8b") || "llama3.1:8b" || "gemma3:4b"
+model = ENV.fetch("OLLAMA_MODEL", "llama3.1:8b-instruct-q4_K_M") || "llama3.1:8b-instruct-q4_K_M" || "gemma3:4b"
 temperature = ENV.fetch("OLLAMA_TEMPERATURE", 0.5) || 0.5
 timeout = 60
 client = client_for(model: model, temperature: temperature, timeout: timeout)
@@ -121,7 +121,7 @@ messages_with_context = [
 response = client.chat_raw(model: model, messages: messages_with_context, allow_chat: true, options: { temperature: 0.7 })
 puts response["message"]["content"]
 
-def chat_with_context_helper(client, user_question, context: {}, model: "llama3.1:8b")
+def chat_with_context_helper(client, user_question, context: {}, model: "llama3.1:8b-instruct-q4_K_M")
   messages = []
   if context.any?
     context_str = context.map { |k, v| "#{k}: #{v}" }.join("\n")
@@ -136,7 +136,7 @@ response = chat_with_context_helper(client, "Draft a short reply we can send to 
 puts response["message"]["content"]
 
 text_response_schema = { "type" => "object", "properties" => { "response" => { "type" => "string" } } }
-def generate_with_context_and_schema(client, prompt, context: {}, schema:, model: "llama3.1:8b")
+def generate_with_context_and_schema(client, prompt, context: {}, schema:, model: "llama3.1:8b-instruct-q4_K_M")
   context_str = context.map { |k, v| "#{k}: #{v}" }.join("\n")
   full_prompt = "Context:\n#{context_str}\n\n#{prompt}\n\nReply with a JSON object with one key \"response\" and your answer as the value."
   client.generate(prompt: full_prompt, schema: schema, model: model)
@@ -200,7 +200,7 @@ end
 # ==================================================
 # 6. REUSABLE CONTEXT HELPER
 # ==================================================
-def chat_with_context(client, user_message, context: {}, conversation_history: [], model_name: "llama3.1:8b")
+def chat_with_context(client, user_message, context: {}, conversation_history: [], model_name: "llama3.1:8b-instruct-q4_K_M")
   messages = []
   if context.any?
     context_str = context.map { |k, v| "#{k}: #{v}" }.join("\n")
