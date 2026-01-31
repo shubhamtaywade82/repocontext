@@ -486,6 +486,29 @@
     .finding-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
     .finding-rule { font-weight: 700; color: var(--text-main); }
     .finding-path { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--text-muted); }
+
+    /* Suggestions */
+    .suggestions-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 10px;
+      animation: msgFadeIn 0.5s ease-out 0.2s both;
+    }
+    .suggestion-chip {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      padding: 8px 16px;
+      font-size: 0.85rem;
+      color: var(--text-main);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .suggestion-chip:hover {
+      background: var(--glass-highlight);
+      border-color: var(--primary);
+    }
   </style>
 </head>
 <body>
@@ -515,6 +538,13 @@
             <div class="message assistant">
               <div class="message-role">System</div>
               <p>Welcome! I'm ready to answer questions about your codebase or help you review code.</p>
+              <% if defined?(suggested_questions) && suggested_questions.any? %>
+                <div class="suggestions-container">
+                  <% suggested_questions.each do |q| %>
+                    <button class="btn-reset suggestion-chip" onclick="useSuggestion(this)"><%= q %></button>
+                  <% end %>
+                </div>
+              <% end %>
             </div>
           </div>
 
@@ -602,6 +632,12 @@
   const chatStatus = $('chatStatus');
   const chatStatusText = $('chatStatusText');
   let chatHistory = [];
+
+  function useSuggestion(btn) {
+    const text = btn.innerText;
+    chatInput.value = text;
+    sendChat();
+  }
 
   function appendChatMsg(role, text) {
     const div = document.createElement('div');

@@ -206,6 +206,25 @@ module RepoContext
             iterations: payload.iteration)
         end
       end
+
+      def suggested_questions
+        questions = [
+          "Summarize this repository",
+          "Identify potential technical debt",
+          "Explain the architecture"
+        ]
+
+        # Context-aware inclusions
+        if File.exist?(File.join(settings.root, "Gemfile"))
+          questions << "Explain the dependencies in Gemfile"
+        end
+
+        if Dir.exist?(File.join(settings.root, "spec")) || Dir.exist?(File.join(settings.root, "test"))
+          questions << "How do I run the tests?"
+        end
+
+        questions.uniq
+      end
     end
 
     get "/" do

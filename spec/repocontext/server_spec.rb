@@ -28,4 +28,24 @@ RSpec.describe RepoContext::Server do
       expect(last_response.status).to eq(422)
     end
   end
+
+  describe "#suggested_questions" do
+    # Helpers are mixed into the app class instance, so we can test via specific route or better yet,
+    # test that the index page renders them since we can't easily access the helper method directly
+    # without a complex setup in rack-test (helpers are private/protected often).
+    # But wait, Sinatra helpers are available in the scope.
+    # We can inspect the body of the index page to see if it contains the questions.
+
+    it "includes suggested questions in the index page" do
+      get "/"
+      expect(last_response.body).to include("Summarize this repository")
+      expect(last_response.body).to include("Identify potential technical debt")
+    end
+
+    it "includes Gemfile-specific questions if Gemfile exists" do
+      # We know Gemfile exists in this repo
+      get "/"
+      expect(last_response.body).to include("Explain the dependencies in Gemfile")
+    end
+  end
 end
