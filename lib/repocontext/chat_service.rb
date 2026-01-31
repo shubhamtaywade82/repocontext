@@ -36,7 +36,8 @@ module RepoContext
     private
 
     def log_ask_start(question)
-      preview = question.size > 80 ? "#{question[0, 80]}..." : question
+      max_len = Settings::LOG_PREVIEW_LENGTH
+      preview = question.size > max_len ? "#{question[0, max_len]}..." : question
       @log.info { "ask (chat): \"#{preview}\" (model=#{@model_name})" }
     end
 

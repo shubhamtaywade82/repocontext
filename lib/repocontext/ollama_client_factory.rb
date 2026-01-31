@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+# LLM client duck type (used by ChatService, ReviewPlanner, ReviewStepExecutor, etc.):
+#   #generate(prompt:, schema:, model:) => Hash
+#   #chat_raw(model:, messages:, allow_chat:, options:) => Hash with "message" => { "content" => String }
+# Implementations (e.g. Ollama::Client) are built by OllamaClientFactory; stub in tests.
 require "ollama_client"
 
 module RepoContext

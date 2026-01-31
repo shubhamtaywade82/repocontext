@@ -96,36 +96,61 @@ module RepoContext
     def load_files_into_context(files, existing_paths: Set.new, max_chars: Settings::CONTEXT_MAX_CHARS)
       total_chars = 0
       result = []
-      repo_root = Settings::REPO_ROOT
 
       files.each do |name|
-        path = File.join(repo_root, name.strip)
-        next unless File.file?(path)
+        path = repo_path(name.strip)
+        next unless path && File.file?(path)
         next if existing_paths.include?(File.expand_path(path))
 
         content = read_file_safely(path)
         next if content.nil?
 
         room = max_chars - total_chars
-        if content.size <= room
-          total_chars += content.size
-          result << "--- #{name.strip} ---\n#{content}"
-        elsif room > 0
-          result << "--- #{name.strip} (first #{room} chars) ---\n#{content[0, room]}"
-          @log.info { "truncated #{name.strip} to #{room} chars (file size #{content.size})" }
-          break
-        else
-          break
-        end
+        chunk, consumed = file_chunk_for_context(name.strip, content, room)
+        next if chunk.nil?
+
+        total_chars += consumed
+        result << chunk
+        break if room > 0 && content.size > room
       end
       result
     end
 
+    def file_chunk_for_context(display_name, content, room)
+      return [nil, 0] if room <= 0
+
+      if content.size <= room
+        ["--- #{display_name} ---\n#{content}", content.size]
+      else
+        @log.info { "truncated #{display_name} to #{room} chars (file size #{content.size})" }
+        ["--- #{display_name} (first #{room} chars) ---\n#{content[0, room]}", room]
+      end
+    end
+
+    def repo_path(relative)
+      return nil if relative.nil? || relative.empty?
+      root = File.expand_path(Settings::REPO_ROOT)
+      expanded = File.expand_path(File.join(root, relative))
+      return nil unless expanded == root || expanded.start_with?(root + File::SEPARATOR)
+      expanded
+    rescue ArgumentError
+      nil
+    end
+
     def read_file_safely(path)
+      return nil unless path_under_repo_root?(path)
       File.read(path)
     rescue Errno::ENOENT, Errno::EACCES, Errno::EISDIR => e
       @log.warn { "skip #{path}: #{e.message}" }
       nil
+    end
+
+    def path_under_repo_root?(path)
+      root = File.expand_path(Settings::REPO_ROOT)
+      expanded = File.expand_path(path)
+      expanded == root || expanded.start_with?(root + File::SEPARATOR)
+    rescue ArgumentError
+      false
     end
 
     def load_repo_context(files = Settings::REFERENCE_FILES, max_chars: Settings::CONTEXT_MAX_CHARS)
@@ -140,8 +165,8 @@ module RepoContext
 
     def base_loaded_paths
       (Settings::REFERENCE_FILES + Settings::FALLBACK_CONTEXT_FILES).filter_map do |name|
-        path = File.join(Settings::REPO_ROOT, name.strip)
-        File.expand_path(path) if File.file?(path)
+        path = repo_path(name.strip)
+        path if path && File.file?(path)
       end.to_set
     end
 
@@ -159,8 +184,8 @@ module RepoContext
         snake = pascal_to_snake(name)
         %w[app/models lib].each do |dir|
           candidate = "#{dir}/#{snake}.rb"
-          path = File.join(Settings::REPO_ROOT, candidate)
-          if File.file?(path)
+          path = repo_path(candidate)
+          if path && File.file?(path)
             paths << candidate
             break
           end

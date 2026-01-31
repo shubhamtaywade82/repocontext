@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+# Single source of configuration: all values are env-backed constants.
+# Stub RepoContext::Settings constants in tests for isolation.
 require "logger"
 
 module RepoContext
@@ -11,6 +13,8 @@ module RepoContext
     DISCOVERY_AGENT_ENABLED = ENV.fetch("DISCOVERY_AGENT_ENABLED", "true").downcase == "true"
     CANDIDATE_PATHS_MAX = 80
     DISCOVERY_PATHS_MAX = 5
+    CANDIDATE_MAX_FILE_SIZE = ENV.fetch("CANDIDATE_MAX_FILE_SIZE", 500_000).to_i
+    CANDIDATE_EXCLUDE_PATTERNS = (ENV["CANDIDATE_EXCLUDE_PATTERNS"]&.split(/\s*,\s*/) || []).freeze
 
     REVIEW_MAX_ITERATIONS = ENV.fetch("REVIEW_MAX_ITERATIONS", 15).to_i
     REVIEW_MAX_PATHS = ENV.fetch("REVIEW_MAX_PATHS", 20).to_i
@@ -40,7 +44,17 @@ module RepoContext
     EMBED_MAX_CHUNKS = ENV.fetch("EMBED_MAX_CHUNKS", 60).to_i
     EMBED_MIN_QUESTION_LENGTH = ENV.fetch("EMBED_MIN_QUESTION_LENGTH", "3").to_i
 
+    # Cache settings
+    CACHE_ENABLED = ENV.fetch("CACHE_ENABLED", "true").downcase == "true"
+    CACHE_TTL_SECONDS = ENV.fetch("CACHE_TTL_SECONDS", 3600).to_i
+    REDIS_URL = ENV["REDIS_URL"]
+    OLLAMA_CLIENT_POOL_SIZE = ENV.fetch("OLLAMA_CLIENT_POOL_SIZE", 5).to_i
+    REVIEW_MAX_FILE_SIZE = ENV.fetch("REVIEW_MAX_FILE_SIZE", 102_400).to_i  # 100KB default
+    EMBED_PARALLEL_CHUNKS = [ENV.fetch("EMBED_PARALLEL_CHUNKS", "1").to_i, 1].max
+
     LOG_LEVEL = (ENV["LOG_LEVEL"] || "info").downcase
+    LOG_PREVIEW_LENGTH = ENV.fetch("LOG_PREVIEW_LENGTH", "80").to_i
+    LOG_FOCUS_MAX_CHARS = ENV.fetch("LOG_FOCUS_MAX_CHARS", "60").to_i
 
     # Set by SIGINT handler; long-running loops (e.g. code review) check this to exit cleanly.
     def self.shutdown_requested?
