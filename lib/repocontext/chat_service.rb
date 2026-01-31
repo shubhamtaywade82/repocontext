@@ -11,8 +11,10 @@ module RepoContext
       @temperature = Settings::OLLAMA_TEMPERATURE.to_f
     end
 
-    def ask(question, repo_context:, conversation_history:)
+    def ask(question, repo_context:, conversation_history:, &on_progress)
       log_ask_start(question)
+      on_progress&.call("Sending to LLM...")
+
       reply_text = reply_text_from_chat(question, repo_context, conversation_history)
       log_ask_done(reply_text)
       reply_text

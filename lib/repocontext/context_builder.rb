@@ -20,30 +20,38 @@ module RepoContext
       @discovery_selector.candidate_paths
     end
 
-    def gather(question)
+    def gather(question, &on_progress)
+      on_progress&.call("Loading validation context...")
       context_text = load_repo_context
+
       context_size_so_far = context_text.size
       paths_already_in_context = base_loaded_paths
 
-      context_text = apply_embed_context(context_text, question, context_size_so_far)
+      context_text = apply_embed_context(context_text, question, context_size_so_far, &on_progress)
+
       context_size_so_far = context_text.size
 
       context_text, paths_already_in_context = apply_boost_paths(
         context_text,
         question,
         context_size_so_far,
-        paths_already_in_context
+        paths_already_in_context,
+        &on_progress
       )
       context_size_so_far = context_text.size
 
-      context_text = apply_discovery_context(context_text, question, paths_already_in_context) if Settings::DISCOVERY_AGENT_ENABLED
+      context_text = apply_discovery_context(context_text, question, paths_already_in_context, &on_progress) if Settings::DISCOVERY_AGENT_ENABLED
+
       context_text
     end
 
     private
 
-    def apply_embed_context(context_text, question, context_size_so_far)
+    def apply_embed_context(context_text, question, context_size_so_far, &on_progress)
       return context_text unless @embedding_builder
+
+      on_progress&.call("Searching embeddings...")
+
 
       remaining_chars = Settings::CONTEXT_MAX_CHARS - context_size_so_far
       embed_block = @embedding_builder.context_for_question(question, max_chars: remaining_chars)
@@ -53,7 +61,9 @@ module RepoContext
       "#{context_text}\n\n#{embed_block}"
     end
 
-    def apply_boost_paths(context_text, question, context_size_so_far, paths_already_in_context)
+    def apply_boost_paths(context_text, question, context_size_so_far, paths_already_in_context, &on_progress)
+      on_progress&.call("Checking for boost paths...")
+
       boost_paths = question_boost_paths(question)
       return [context_text, paths_already_in_context] if boost_paths.empty?
 
@@ -66,7 +76,9 @@ module RepoContext
       ["#{context_text}\n\n#{boost_chunks.join("\n\n")}", paths_after_boost]
     end
 
-    def apply_discovery_context(context_text, question, paths_already_in_context)
+    def apply_discovery_context(context_text, question, paths_already_in_context, &on_progress)
+      on_progress&.call("Discovering related files...")
+
       candidate_path_list = @discovery_selector.candidate_paths
       return context_text if candidate_path_list.empty?
 

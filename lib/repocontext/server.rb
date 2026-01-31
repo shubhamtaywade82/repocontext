@@ -161,13 +161,16 @@ module RepoContext
       end
 
       def build_chat_stream_enumerator(user_message, message_history, out)
-        write_stream_event(out, "status", message: "Gathering context…")
-        codebase_context = repo_context_builder.gather(user_message)
-        write_stream_event(out, "status", message: "Asking Ollama…")
+        on_progress = ->(msg) { write_stream_event(out, "status", message: msg) }
+
+        on_progress.call("Initializing...")
+        codebase_context = repo_context_builder.gather(user_message, &on_progress)
+
         reply_text = repo_chat_service.ask(
           user_message,
           repo_context: codebase_context,
-          conversation_history: message_history
+          conversation_history: message_history,
+          &on_progress
         )
         updated_history = append_exchange_to_history(message_history, user_message, reply_text)
         write_stream_event(out, "done", response: reply_text, history: updated_history)
