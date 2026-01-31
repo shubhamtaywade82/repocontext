@@ -751,6 +751,13 @@
             if (data.event === 'status') {
                markLastTimelineDone();
                addTimelineItem('Planning', data.message);
+            } else if (data.event === 'error') {
+               markLastTimelineDone();
+               addTimelineItem('Error', data.error, 'error'); // Define styling for 'error' class if needed or use 'active'
+               const errorCard = document.createElement('div');
+               errorCard.className = 'finding-card error';
+               errorCard.innerHTML = `<div class="finding-header"><span class="finding-rule">Error</span></div><div>${escapeHtml(data.error)}</div>`;
+               reviewResultsArea.appendChild(errorCard);
             } else if (data.event === 'review_file') {
                markLastTimelineDone();
                addTimelineItem('Reviewing', data.path.split('/').pop(), 'active');
@@ -791,8 +798,11 @@
       }
 
     } catch (e) {
-      alert('Error running review');
+      console.error(e);
+      addTimelineItem('Error', 'Stream connection failed: ' + e.message, 'active');
+    } finally {
       startReviewBtn.disabled = false;
+      markLastTimelineDone();
     }
   }
 
