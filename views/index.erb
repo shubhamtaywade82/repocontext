@@ -767,7 +767,7 @@
                  <div class="finding-card ${f.severity}">
                    <div class="finding-header">
                      <span class="finding-rule">${escapeHtml(f.rule || 'Issue')}</span>
-                     <span class="finding-path">${escapeHtml(data.path)}:${f.line}</span>
+                     <span class="finding-path">${escapeHtml(data.path)}${f.line ? ':' + f.line : ''}</span>
                    </div>
                    <div>${escapeHtml(f.message)}</div>
                  </div>
