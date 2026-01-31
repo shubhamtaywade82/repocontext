@@ -38,6 +38,10 @@ module RepoContext
     end
 
     helpers do
+      def log
+        RepoContext::Settings.logger
+      end
+
       def ollama_client
         settings.ollama_client
       end
@@ -47,7 +51,7 @@ module RepoContext
           repo_root: RepoContext::Settings::REPO_ROOT,
           client: ollama_client,
           model: settings.ollama_model,
-          logger: RepoContext::Settings.logger
+          logger: log
         )
       end
 
@@ -56,7 +60,7 @@ module RepoContext
           client: ollama_client,
           repo_root: RepoContext::Settings::REPO_ROOT,
           candidate_paths_source: -> { discovery_path_selector.candidate_paths },
-          logger: RepoContext::Settings.logger
+          logger: log
         )
       end
 
@@ -64,7 +68,7 @@ module RepoContext
         @repo_context_builder ||= RepoContext::ContextBuilder.new(
           discovery_selector: discovery_path_selector,
           embedding_builder: embedding_context_builder,
-          logger: RepoContext::Settings.logger
+          logger: log
         )
       end
 
@@ -72,7 +76,7 @@ module RepoContext
         @repo_chat_service ||= RepoContext::ChatService.new(
           client: ollama_client,
           model: settings.ollama_model,
-          logger: RepoContext::Settings.logger
+          logger: log
         )
       end
 
@@ -82,19 +86,34 @@ module RepoContext
           planner: RepoContext::ReviewPlanner.new(
             client: ollama_client,
             model: settings.ollama_model,
-            logger: RepoContext::Settings.logger
+            logger: log
           ),
           executor: RepoContext::ReviewStepExecutor.new(
             client: ollama_client,
             model: RepoContext::Settings::OLLAMA_CODE_MODEL,
-            logger: RepoContext::Settings.logger
+            logger: log
           ),
           summary_writer: RepoContext::ReviewSummaryWriter.new(
             client: ollama_client,
             model: settings.ollama_model,
-            logger: RepoContext::Settings.logger
+            logger: log
           ),
-          logger: RepoContext::Settings.logger
+          logger: log
+        )
+      end
+
+      def chat_request_handler
+        @chat_request_handler ||= RepoContext::ChatRequestHandler.new(
+          context_builder: repo_context_builder,
+          chat_service: repo_chat_service,
+          logger: log
+        )
+      end
+
+      def review_request_handler
+        @review_request_handler ||= RepoContext::ReviewRequestHandler.new(
+          review_agent: code_review_agent,
+          logger: log
         )
       end
 
@@ -108,12 +127,20 @@ module RepoContext
         stream_yielder.flush if stream_yielder.respond_to?(:flush)
       end
 
+      def append_exchange_to_history(history, user_msg, assistant_msg)
+        history + [
+          { "role" => "user", "content" => user_msg },
+          { "role" => "assistant", "content" => assistant_msg }
+        ]
+      end
+
       def parse_chat_request
         request_body = read_and_parse_json_body
         user_message = extract_user_message(request_body)
         message_history = extract_message_history(request_body)
-        RepoContext::Settings.logger.info { "api/chat: request (history=#{message_history.size})" }
-        [user_message, message_history]
+        model = extract_model(request_body)
+        log.info { "api/chat: request (history=#{message_history.size}, model=#{model})" }
+        [user_message, message_history, model]
       end
 
       def read_and_parse_json_body
@@ -130,11 +157,17 @@ module RepoContext
         history.is_a?(Array) ? history : []
       end
 
+      def extract_model(request_body)
+        model = request_body["model"].to_s.strip
+        model.empty? ? Settings::OLLAMA_MODEL : model
+      end
+
       def parse_review_request
         request_body = read_and_parse_json_body
         review_paths = extract_review_paths(request_body)
         review_focus = extract_review_focus(request_body)
-        [review_paths, review_focus]
+        model = extract_model(request_body)
+        [review_paths, review_focus, model]
       end
 
       def extract_review_paths(request_body)
@@ -150,10 +183,18 @@ module RepoContext
       end
 
       def log_and_respond_ollama_error(error)
-        RepoContext::Settings.logger.error { "Ollama error: #{error.message}" }
+        log.error { "Ollama error: #{error.message}" }
         status 502
         content_type :json
         { error: "Ollama error: #{error.message}" }.to_json
+      end
+
+      def log_and_respond_internal_error(error)
+        log.error { "Internal error: #{error.class} - #{error.message}" }
+        log.error { error.backtrace&.first(5)&.join("\n") }
+        status 500
+        content_type :json
+        { error: "Internal server error" }.to_json
       end
 
       def json_error_response(status_code, error_message)
@@ -164,28 +205,18 @@ module RepoContext
 
       def build_chat_stream_enumerator(user_message, message_history, out)
         on_progress = ->(msg) { write_stream_event(out, "status", message: msg) }
-
-        on_progress.call("Initializing...")
-        codebase_context = repo_context_builder.gather(user_message, &on_progress)
-
-        reply_text = repo_chat_service.ask(
-          user_message,
-          repo_context: codebase_context,
-          conversation_history: message_history,
+        result = chat_request_handler.call(
+          message: user_message,
+          message_history: message_history,
           &on_progress
         )
-        updated_history = append_exchange_to_history(message_history, user_message, reply_text)
-        write_stream_event(out, "done", response: reply_text, history: updated_history)
+        write_stream_event(out, "done", response: result[:response], history: result[:history])
       rescue Ollama::Error => e
-        RepoContext::Settings.logger.error { "Ollama error: #{e.message}" }
+        log.error { "Ollama error: #{e.message}" }
         write_stream_event(out, "error", error: "Ollama error: #{e.message}")
-      end
-
-      def append_exchange_to_history(message_history, user_message, reply_text)
-        message_history + [
-          { "role" => "user", "content" => user_message },
-          { "role" => "assistant", "content" => reply_text }
-        ]
+      rescue StandardError => e
+        log.error { "Chat stream error: #{e.class} - #{e.message}" }
+        write_stream_event(out, "error", error: "Internal server error")
       end
 
       def build_review_stream_enumerator(review_paths, review_focus, out)
@@ -194,8 +225,11 @@ module RepoContext
           emit_review_stream_event(out, event_name, iteration, payload)
         end
       rescue Ollama::Error => e
-        RepoContext::Settings.logger.error { "Ollama error: #{e.message}" }
+        log.error { "Ollama error: #{e.message}" }
         write_stream_event(out, "error", error: "Ollama error: #{e.message}")
+      rescue StandardError => e
+        log.error { "Review stream error: #{e.class} - #{e.message}" }
+        write_stream_event(out, "error", error: "Internal server error")
       end
 
       def emit_review_stream_event(out, event_name, iteration, payload)
@@ -223,18 +257,59 @@ module RepoContext
 
       def suggested_questions
         questions = [
+          # Understanding the codebase
           "Summarize this repository",
+          "Explain the architecture",
+          "What does this project do?",
+
+          # Code quality & improvement
           "Identify potential technical debt",
-          "Explain the architecture"
+          "Find code duplication patterns",
+          "Suggest performance optimizations",
+          "Review error handling practices",
+
+          # Development help
+          "How do I add a new feature?",
+          "Explain the authentication flow",
+          "Where should I add logging?",
+          "How is data validated?"
         ]
 
         # Context-aware inclusions
-        if File.exist?(File.join(settings.root, "Gemfile"))
-          questions << "Explain the dependencies in Gemfile"
+        root = settings.root
+
+        # Ruby-specific
+        if File.exist?(File.join(root, "Gemfile"))
+          questions += [
+            "Explain the dependencies in Gemfile",
+            "What gems are used and why?"
+          ]
         end
 
-        if Dir.exist?(File.join(settings.root, "spec")) || Dir.exist?(File.join(settings.root, "test"))
-          questions << "How do I run the tests?"
+        # Testing
+        if Dir.exist?(File.join(root, "spec")) || Dir.exist?(File.join(root, "test"))
+          questions += [
+            "How do I run the tests?",
+            "What's the test coverage?"
+          ]
+        end
+
+        # Package.json (JavaScript/Node)
+        if File.exist?(File.join(root, "package.json"))
+          questions += [
+            "Explain the npm scripts",
+            "What build tools are used?"
+          ]
+        end
+
+        # Docker
+        if File.exist?(File.join(root, "Dockerfile"))
+          questions << "Explain the Docker setup"
+        end
+
+        # Database
+        if Dir.exist?(File.join(root, "db")) || Dir.exist?(File.join(root, "migrations"))
+          questions << "Explain the database schema"
         end
 
         questions.uniq
@@ -242,16 +317,83 @@ module RepoContext
     end
 
     get "/" do
-      RepoContext::Settings.logger.debug { "GET /" }
+      log.debug { "GET /" }
       erb :index
     end
 
+    get "/api/models" do
+      content_type :json
+      begin
+        # Fetch models from Ollama - returns array of model names
+        model_names = ollama_client.list_models
+
+        # Filter out embedding models and format for UI
+        models = model_names
+          .reject { |name| name.include?("embed") }  # Skip embedding models
+          .map do |name|
+            {
+              name: name,
+              display_name: format_model_display_name(name)
+            }
+          end
+
+        { models: models }.to_json
+      rescue StandardError => e
+        log.error { "Failed to fetch models: #{e.message}" }
+        # Fallback to default models if Ollama is unavailable
+        { models: [
+          { name: Settings::OLLAMA_MODEL, display_name: "Default Model" }
+        ] }.to_json
+      end
+    end
+
+    private
+
+    def format_model_display_name(model_name)
+      # Parse "llama3.1:8b-instruct-q4_K_M" into readable name
+      parts = model_name.split(':')
+      base = parts[0]
+      variant = parts[1] || ""
+
+      # Capitalize base name (llama3.1 -> Llama 3.1)
+      display_base = base.gsub(/(\d+)\.(\d+)/, '\1.\2')
+                         .gsub(/(\D)(\d)/, '\1 \2')
+                         .split(/[-_\.]/)
+                         .map(&:capitalize)
+                         .join(' ')
+
+      # Parse variant for size and type
+      if variant.include?("instruct")
+        type = "Instruct"
+      elsif variant.include?("coder")
+        type = "Coder"
+      else
+        type = "Base"
+      end
+
+      # Extract size (8b, 7b, etc.)
+      size_match = variant.match(/(\d+)b/)
+      size = size_match ? size_match[1] + "B" : ""
+
+      # Build display name
+      parts = [display_base, size, type].reject(&:empty?)
+      parts.join(' ')
+    end
+
+    public
+
     post "/api/chat" do
-      user_message, message_history = parse_chat_request
+      user_message, message_history, model = parse_chat_request
       return json_error_response(422, "message is required") if user_message.empty?
 
+      chat_service = RepoContext::ChatService.new(
+        client: ollama_client,
+        model: model,
+        logger: log
+      )
+
       codebase_context = repo_context_builder.gather(user_message)
-      reply_text = repo_chat_service.ask(
+      reply_text = chat_service.ask(
         user_message,
         repo_context: codebase_context,
         conversation_history: message_history
@@ -262,49 +404,101 @@ module RepoContext
     rescue Ollama::Error => e
       return log_and_respond_ollama_error(e)
     rescue JSON::ParserError => e
-      RepoContext::Settings.logger.warn { "Invalid JSON body: #{e.message}" }
+      log.warn { "Invalid JSON body: #{e.message}" }
       return json_error_response(422, "Invalid JSON body")
+    rescue StandardError => e
+      return log_and_respond_internal_error(e)
     end
 
     post "/api/chat/stream" do
-      user_message, message_history = parse_chat_request
+      user_message, message_history, model = parse_chat_request
       return json_error_response(422, "message is required") if user_message.empty?
 
       content_type "application/x-ndjson", charset: "utf-8"
       stream do |out|
-        build_chat_stream_enumerator(user_message, message_history, out)
+        on_progress = ->(msg) { write_stream_event(out, "status", message: msg) }
+
+        on_progress.call("Initializing...")
+        codebase_context = repo_context_builder.gather(user_message, &on_progress)
+
+        chat_service = RepoContext::ChatService.new(
+          client: ollama_client,
+          model: model,
+          logger: log
+        )
+
+        reply_text = chat_service.ask(
+          user_message,
+          repo_context: codebase_context,
+          conversation_history: message_history,
+          &on_progress
+        )
+        updated_history = append_exchange_to_history(message_history, user_message, reply_text)
+        write_stream_event(out, "done", response: reply_text, history: updated_history)
+      rescue Ollama::Error => e
+        log.error { "Ollama error: #{e.message}" }
+        write_stream_event(out, "error", error: "Ollama error: #{e.message}")
       end
     rescue JSON::ParserError
       json_error_response(422, "Invalid JSON body")
+    rescue StandardError => e
+      log_and_respond_internal_error(e)
     end
 
     post "/api/review" do
       review_paths, review_focus = parse_review_request
-      RepoContext::Settings.logger.info { "api/review: paths=#{review_paths.size}, focus=#{review_focus[0, 60]}..." }
+      log.info { "api/review: paths=#{review_paths.size}, focus=#{review_focus[0, RepoContext::Settings::LOG_FOCUS_MAX_CHARS]}..." }
 
-      review_result_state = code_review_agent.run(request_paths: review_paths, focus: review_focus)
+      result = review_request_handler.call(paths: review_paths, focus: review_focus)
       content_type :json
-      {
-        findings: review_result_state.findings,
-        summary: review_result_state.observations.last,
-        reviewed_paths: review_result_state.reviewed_paths,
-        iterations: review_result_state.iteration
-      }.to_json
+      result.to_json
     rescue Ollama::Error => e
       return log_and_respond_ollama_error(e)
     rescue JSON::ParserError => e
-      RepoContext::Settings.logger.warn { "Invalid JSON body: #{e.message}" }
+      log.warn { "Invalid JSON body: #{e.message}" }
       return json_error_response(422, "Invalid JSON body")
+    rescue StandardError => e
+      return log_and_respond_internal_error(e)
     end
 
     post "/api/review/stream" do
-      review_paths, review_focus = parse_review_request
+      review_paths, review_focus, model = parse_review_request
       content_type "application/x-ndjson", charset: "utf-8"
       stream do |out|
-        build_review_stream_enumerator(review_paths, review_focus, out)
+        write_stream_event(out, "status", message: "Starting code review…")
+
+        # Create code review agent with selected model
+        review_agent = RepoContext::CodeReviewAgent.new(
+          path_source: discovery_path_selector,
+          planner: RepoContext::ReviewPlanner.new(
+            client: ollama_client,
+            model: model,
+            logger: log
+          ),
+          executor: RepoContext::ReviewStepExecutor.new(
+            client: ollama_client,
+            model: model,
+            logger: log
+          ),
+          summary_writer: RepoContext::ReviewSummaryWriter.new(
+            client: ollama_client,
+            model: model,
+            logger: log
+          ),
+          logger: log
+        )
+
+        review_agent.run_with_events(request_paths: review_paths, focus: review_focus) do |event_name, iteration, payload|
+          emit_review_stream_event(out, event_name, iteration, payload)
+        end
+      rescue Ollama::Error => e
+        log.error { "Ollama error: #{e.message}" }
+        write_stream_event(out, "error", error: "Ollama error: #{e.message}")
       end
     rescue JSON::ParserError
       json_error_response(422, "Invalid JSON body")
+    rescue StandardError => e
+      log_and_respond_internal_error(e)
     end
   end
 end

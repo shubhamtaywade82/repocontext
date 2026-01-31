@@ -10,6 +10,7 @@ gem "sinatra", "~> 3.0"
 gem "webrick"
 gem "puma"
 gem "sqlite3"
+gem "connection_pool", "~> 2.4"
 
 
 

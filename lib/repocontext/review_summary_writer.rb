@@ -2,12 +2,16 @@
 
 module RepoContext
   # Single responsibility: produce a summary outcome from review state (findings + paths).
+  # Dependencies: client (LLM duck: #generate(prompt:, schema:, model:)), model (string), logger.
   class ReviewSummaryWriter
     SUMMARY_SCHEMA = {
       "type" => "object",
       "required" => ["summary"],
       "properties" => { "summary" => { "type" => "string" } }
     }.freeze
+
+    DEFAULT_SUMMARY = "No summary produced."
+    SUMMARY_FAILED_PREFIX = "Summary failed:"
 
     def initialize(client:, model:, logger: Settings.logger)
       @client = client
@@ -21,12 +25,12 @@ module RepoContext
       prompt = build_summary_prompt(state)
       response = @client.generate(prompt: prompt, schema: SUMMARY_SCHEMA, model: @model)
       summary_text = response["summary"].to_s.strip
-      summary_text = "No summary produced." if summary_text.empty?
+      summary_text = DEFAULT_SUMMARY if summary_text.empty?
       @log.info { "summary produced" }
-      FileReviewOutcome.new(findings: [], observation: summary_text, reviewed_path: nil)
+      FileReviewOutcome.with_observation(summary_text, reviewed_path: nil)
     rescue Ollama::Error => e
-      @log.warn { "summary failed: #{e.message}" }
-      FileReviewOutcome.new(findings: [], observation: "Summary failed: #{e.message}", reviewed_path: nil)
+      @log.warn { "summary failed: #{e.class} - #{e.message}" }
+      FileReviewOutcome.with_observation("#{SUMMARY_FAILED_PREFIX} #{e.message}", reviewed_path: nil)
     end
 
     private
@@ -46,9 +50,12 @@ module RepoContext
     def format_findings(findings)
       return "No findings." if findings.empty?
 
-      findings.map do |f|
-        "[#{f['severity']}] #{f['file']}#{f['line'] ? ":#{f['line']}" : ''} #{f['rule']}: #{f['message']}"
-      end.join("\n")
+      findings.map { |f| format_one_finding(f) }.join("\n")
+    end
+
+    def format_one_finding(finding)
+      loc = finding["line"] ? ":#{finding['line']}" : ""
+      "[#{finding['severity']}] #{finding['file']}#{loc} #{finding['rule']}: #{finding['message']}"
     end
   end
 end
