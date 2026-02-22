@@ -599,6 +599,12 @@
             <option value="" selected>Loading models...</option>
           </select>
         </div>
+        <div class="model-selector" id="repoSelectorWrapper" style="display:none;">
+          <label class="model-label">Discovery Context</label>
+          <div id="repoList" style="display:flex; gap:8px; flex-wrap:wrap; max-width: 400px;">
+            <!-- Repos will be injected here -->
+          </div>
+        </div>
       </div>
       <nav class="nav-tabs">
         <button class="btn-reset nav-tab active" data-target="chat">Chat</button>
@@ -630,6 +636,12 @@
             <div class="input-wrapper">
               <div class="chat-status-bar" id="chatStatus" style="display:none;">
                 <span class="spinner"></span> <span id="chatStatusText">Processing...</span>
+              </div>
+              <div style="display:flex; align-items:center; gap: 12px; margin-bottom: 8px; font-size: 0.8rem; color: var(--text-muted);">
+                <label style="display:flex; align-items:center; gap: 6px; cursor:pointer;">
+                  <input type="checkbox" id="discoveryToggle" style="accent-color: var(--primary);">
+                  <span style="color: var(--primary); font-weight: 600;">Discovery Mode (Search across multiple repos via MCP)</span>
+                </label>
               </div>
               <textarea id="chatInput" class="chat-input" placeholder="Ask a question about the repo..." rows="1"></textarea>
               <button id="chatSendBtn" class="btn-reset send-btn">
@@ -693,13 +705,12 @@
     return d.innerHTML;
   };
 
-  // -- Load Available Models --
+  // -- Models & Repositories --
   async function loadModels() {
     const modelSelect = $('modelSelect');
     try {
       const resp = await fetch('/api/models');
       const data = await resp.json();
-
       if (data.models && data.models.length > 0) {
         modelSelect.innerHTML = '';
         data.models.forEach((model, index) => {
@@ -710,14 +721,37 @@
           modelSelect.appendChild(option);
         });
       }
-    } catch (err) {
-      console.error('Failed to load models:', err);
-      // Keep the default option if fetch fails
-    }
+    } catch (err) { console.error('Failed to load models:', err); }
   }
 
-  // Load models on page load
+  async function loadRepositories() {
+    const repoList = $('repoList');
+    try {
+      const resp = await fetch('/api/repositories');
+      const data = await resp.json();
+      if (data.repositories) {
+        repoList.innerHTML = '';
+        data.repositories.forEach((url, index) => {
+          const repoName = url.split('/').pop();
+          const label = document.createElement('label');
+          label.className = 'suggestion-chip';
+          label.innerHTML = `<input type="checkbox" name="mcp_repo" value="${url}" checked> ${repoName}`;
+          repoList.appendChild(label);
+        });
+      }
+    } catch (err) { console.error('Failed to load repos:', err); }
+  }
+
   loadModels();
+  loadRepositories();
+
+  // Discovery Toggle Logic
+  $('discoveryToggle').addEventListener('change', (e) => {
+    $('repoSelectorWrapper').style.display = e.target.checked ? 'block' : 'none';
+    chatInput.placeholder = e.target.checked
+      ? "Ask a question across selected repositories..."
+      : "Ask a question about the local repo...";
+  });
 
   // -- Tabs --
   document.querySelectorAll('.nav-tab').forEach(t => {
@@ -794,11 +828,21 @@
 
     let lastStep = null;
 
+    const isDiscovery = $('discoveryToggle').checked;
+    const endpoint = isDiscovery ? '/api/discovery/stream' : '/api/chat/stream';
+    const selectedRepos = Array.from(document.querySelectorAll('input[name="mcp_repo"]:checked')).map(i => i.value);
+
     try {
-      const resp = await fetch('/api/chat/stream', {
+      const resp = await fetch(endpoint, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ message: txt, history: chatHistory, model: selectedModel })
+        body: JSON.stringify({
+          message: txt,
+          query: txt, // Discovery uses 'query' key
+          history: chatHistory,
+          model: selectedModel,
+          repositories: selectedRepos
+        })
       });
 
       const reader = resp.body.getReader();

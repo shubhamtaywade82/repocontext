@@ -5,6 +5,7 @@ require "json"
 require "webrick"
 require_relative "../repocontext"
 require_relative "vector_store"
+require_relative "discovery_service"
 
 
 module RepoContext
@@ -324,11 +325,12 @@ module RepoContext
     get "/api/models" do
       content_type :json
       begin
-        # Fetch models from Ollama - returns array of model names
-        model_names = ollama_client.list_models
+        # Fetch models from Ollama - returns array of model hashes
+        model_hashes = ollama_client.list_models
 
         # Filter out embedding models and format for UI
-        models = model_names
+        models = model_hashes
+          .map { |m| m["name"] }
           .reject { |name| name.include?("embed") }  # Skip embedding models
           .map do |name|
             {
@@ -345,6 +347,11 @@ module RepoContext
           { name: Settings::OLLAMA_MODEL, display_name: "Default Model" }
         ] }.to_json
       end
+    end
+
+    get "/api/repositories" do
+      content_type :json
+      { repositories: RepoContext::DiscoveryService::REPOSITORIES }.to_json
     end
 
     private
@@ -495,10 +502,54 @@ module RepoContext
         log.error { "Ollama error: #{e.message}" }
         write_stream_event(out, "error", error: "Ollama error: #{e.message}")
       end
-    rescue JSON::ParserError
-      json_error_response(422, "Invalid JSON body")
-    rescue StandardError => e
-      log_and_respond_internal_error(e)
+    end
+
+    post "/api/discovery/stream" do
+      request_body = JSON.parse(request.body.read)
+      query = request_body["query"].to_s.strip
+      repo_urls = request_body["repositories"] || []
+      model = extract_model(request_body)
+
+      log.info { "api/discovery: request received (repos=#{repo_urls.size}, model=#{model})" }
+
+      return json_error_response(422, "query is required") if query.empty?
+
+      content_type "application/x-ndjson", charset: "utf-8"
+      stream do |out|
+        discovery_service = RepoContext::DiscoveryService.new(
+          client: ollama_client,
+          model: model,
+          logger: log
+        )
+
+        begin
+          write_stream_event(out, "status", message: "Running agentic query...")
+          response = discovery_service.run(query, repo_urls: repo_urls) do |event, data|
+          case event
+          when :status
+            write_stream_event(out, "status", message: data[:message])
+          when :connecting
+            write_stream_event(out, "status", message: "Connecting to #{data[:repo]}...")
+          when :connected
+            write_stream_event(out, "status", message: "Connected to #{data[:repo]} (found #{data[:tool_count]} tools)")
+          when :query_start
+            write_stream_event(out, "status", message: "Running agentic query...")
+          when :query_done
+            write_stream_event(out, "done", response: data[:result])
+          when :error
+            write_stream_event(out, "status", message: "Warning: Failed to connect to #{data[:repo]}: #{data[:message]}")
+          end
+        end
+      rescue StandardError => e
+        log.error { "Discovery stream error: #{e.class} - #{e.message}" }
+        friendly_error = if e.message.include?("Empty response body")
+          "Model failed to generate a plan. Try using a larger model (e.g., Llama 3.1 8B) for better reasoning."
+        else
+          "Internal server error: #{e.message}"
+        end
+        write_stream_event(out, "error", error: friendly_error)
+      end
     end
   end
+end
 end
