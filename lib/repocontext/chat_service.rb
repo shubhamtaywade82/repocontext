@@ -1,66 +1,69 @@
 # frozen_string_literal: true
 
+require "agent_runtime"
+
+# Monkey-patch Decision to handle arbitrary keys from Ollama structured output
+module AgentRuntime
+  class Decision
+    def initialize(action: nil, params: nil, confidence: nil, **extra)
+      super(action: action || "finish", params: (params || {}).merge(extra), confidence: confidence)
+    end
+  end
+end
+
 module RepoContext
   class ChatService
     SIMPLE_RESPONSE_SCHEMA = { "type" => "object", "properties" => { "response" => { "type" => "string" } } }.freeze
 
     def initialize(client:, model:, logger: Settings.logger)
-      @ollama_client = client
-      @model_name = model
       @log = logger
+      @model_name = model
       @temperature = Settings::OLLAMA_TEMPERATURE.to_f
+      @planner = AgentRuntime::Planner.new(
+        client: client,
+        model: model,
+        temperature: @temperature,
+        think: true # Enable thinking blocks for models that support it
+      )
     end
 
     def ask(question, repo_context:, conversation_history:, &on_progress)
       log_ask_start(question)
       on_progress&.call("Sending to LLM...")
 
-      reply_text = reply_text_from_chat(question, repo_context, conversation_history)
+      messages = build_messages(repo_context, conversation_history, question)
+      reply_text = @planner.chat(messages: messages)
+
       log_ask_done(reply_text)
       reply_text
-    rescue Ollama::Error => e
-      @log.warn { "chat_raw failed: #{e.message}, falling back to generate" }
+    rescue StandardError => e
+      @log.debug { "Thinking block not supported or chat failed (#{e.message}); falling back to generate" }
       ask_via_generate(question, repo_context: repo_context)
     end
 
     def ask_via_generate(question, repo_context:)
-      generate_prompt_text = build_generate_prompt(repo_context, question)
-      raw_response = @ollama_client.generate(
-        prompt: generate_prompt_text,
+      # Local planner for one-shot structured generation
+      planner = AgentRuntime::Planner.new(
+        client: @planner.instance_variable_get(:@client),
+        model: @model_name,
         schema: SIMPLE_RESPONSE_SCHEMA,
-        model: @model_name
+        prompt_builder: ->(input:, state:) { build_generate_prompt(state[:context], input) }
       )
-      raw_response["response"].to_s
+
+      decision = planner.plan(input: question, state: { context: repo_context })
+      decision.params[:response].to_s
     end
 
     private
 
     def log_ask_start(question)
-      preview = question.size > 80 ? "#{question[0, 80]}..." : question
+      max_len = Settings::LOG_PREVIEW_LENGTH
+      preview = question.size > max_len ? "#{question[0, max_len]}..." : question
       @log.info { "ask (chat): \"#{preview}\" (model=#{@model_name})" }
     end
 
     def log_ask_done(response_text)
       @log.info { "reply: #{response_text.size} chars" }
-    end
-
-    def reply_text_from_chat(question, codebase_context, message_history)
-      messages = build_messages(codebase_context, message_history, question)
-      raw = @ollama_client.chat_raw(
-        model: @model_name,
-        messages: messages,
-        allow_chat: true,
-        options: { temperature: @temperature }
-      )
-      extract_message_content(raw)
-    end
-
-    def extract_message_content(raw_chat_response)
-      message = raw_chat_response["message"]
-      return "" unless message.is_a?(Hash)
-
-      content = message["content"]
-      content.to_s
     end
 
     def system_content(codebase_context)

@@ -1,7 +1,12 @@
 # frozen_string_literal: true
 
 module RepoContext
+  # Plans the next step of a code review by asking the LLM which file to review or whether to stop.
+  # Interface: #next_step(review_state, candidate_paths) => ReviewPlanStep.
+  # Dependencies: client (LLM duck type: #generate(prompt:, schema:, model:)), model (string), logger.
   class ReviewPlanner
+    PLAN_PATHS_LIMIT = 40
+
     PLAN_SCHEMA = {
       "type" => "object",
       "required" => %w[done next_action],
@@ -17,6 +22,8 @@ module RepoContext
       }
     }.freeze
 
+    PlanResponse = Struct.new(:done, :next_action, :target, :reasoning, keyword_init: true)
+
     def initialize(client:, model:, logger: Settings.logger)
       @ollama_client = client
       @model_name = model
@@ -29,8 +36,9 @@ module RepoContext
       paths_not_yet_reviewed = review_state.remaining_candidates(candidate_paths)
       return done_step("All candidates reviewed") if paths_not_yet_reviewed.empty?
 
-      llm_response = request_next_action(review_state, paths_not_yet_reviewed)
-      build_plan_step_from_response(llm_response, paths_not_yet_reviewed)
+      raw = request_next_action(review_state, paths_not_yet_reviewed)
+      parsed = parse_plan_response(raw)
+      build_plan_step(parsed)
     rescue Ollama::Error => e
       @log.warn { "planner failed: #{e.message}, defaulting to first remaining file" }
       ReviewPlanStep.new(action: ReviewPlanStep::REVIEW_FILE, target: paths_not_yet_reviewed.first, reasoning: "fallback")
@@ -47,36 +55,33 @@ module RepoContext
       @ollama_client.generate(prompt: plan_prompt, schema: PLAN_SCHEMA, model: @model_name)
     end
 
-    def build_plan_step_from_response(llm_response, paths_not_yet_reviewed)
-      action = parse_action_from_response(llm_response)
-      target = parse_target_from_response(llm_response)
-      reasoning = llm_response["reasoning"].to_s.strip
-      @log.info { "planner: action=#{action}, target=#{target}" }
-      ReviewPlanStep.new(action: action, target: target, reasoning: reasoning)
+    def parse_plan_response(raw)
+      return PlanResponse.new(done: true, next_action: ReviewPlanStep::DONE, target: nil, reasoning: "") unless raw.is_a?(Hash)
+
+      target_str = raw["target"].to_s.strip
+      PlanResponse.new(
+        done: raw["done"] == true,
+        next_action: raw["next_action"].to_s.strip,
+        target: target_str.empty? ? nil : target_str,
+        reasoning: raw["reasoning"].to_s.strip
+      )
     end
 
-    def parse_action_from_response(llm_response)
-      return ReviewPlanStep::DONE if llm_response.is_a?(Hash) && llm_response["done"] == true
-
-      action = llm_response.is_a?(Hash) ? llm_response["next_action"].to_s.strip : ""
-      action.empty? ? ReviewPlanStep::DONE : action
-    end
-
-    def parse_target_from_response(llm_response)
-      return nil unless llm_response.is_a?(Hash)
-
-      target = llm_response["target"].to_s.strip
-      target.empty? ? nil : target
+    def build_plan_step(parsed)
+      action = parsed.done ? ReviewPlanStep::DONE : (parsed.next_action.to_s.strip.empty? ? ReviewPlanStep::DONE : parsed.next_action)
+      @log.info { "planner: action=#{action}, target=#{parsed.target}" }
+      ReviewPlanStep.new(action: action, target: parsed.target, reasoning: parsed.reasoning)
     end
 
     def build_plan_prompt(review_state, paths_not_yet_reviewed)
+      path_list = paths_not_yet_reviewed.first(PLAN_PATHS_LIMIT).join("\n")
       <<~PROMPT
         You are planning the next step of a code review. Review focus: #{review_state.focus}
 
         #{review_state.summary_for_planner}
 
         Remaining files not yet reviewed (choose one path exactly as listed, or say summarize/done):
-        #{paths_not_yet_reviewed.first(40).join("\n")}
+        #{path_list}
 
         If there are remaining files, set next_action to "review_file" and target to one path from the list. When no files remain or you are done, set next_action to "done" and done to true.
         Return JSON: done (boolean), next_action ("review_file" | "summarize" | "done"), target (path when review_file), reasoning (short).

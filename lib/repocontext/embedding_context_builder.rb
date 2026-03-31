@@ -2,6 +2,7 @@
 require "net/http"
 require "uri"
 require "json"
+require "digest"
 
 module RepoContext
   # Single responsibility: build embedding index and retrieve relevant context for a question.
@@ -12,6 +13,7 @@ module RepoContext
       @candidate_paths_source = candidate_paths_source
       @log = logger
       @store = VectorStore.new(repo_root: repo_root, logger: logger)
+      @cache = CacheManager.new(logger: logger, namespace: "embed")
     end
 
     def context_for_question(question, max_chars:)
@@ -20,14 +22,23 @@ module RepoContext
       return "" if max_chars <= 0
       return "" unless question_worth_embedding?(question)
 
+      # Check cache for previously computed context
+      cache_key = cache_key_for_question(question, max_chars)
+      cached_context = @cache.get(cache_key)
+      return cached_context if cached_context
+
       index = build_index
       return "" if index.empty?
 
-      vec = embed_string(question.to_s.strip)
+      vec = embed_string_with_cache(question.to_s.strip)
       return "" if vec.empty?
 
       top_chunks = top_chunks_by_similarity(index, vec)
-      assemble_context(top_chunks, max_chars)
+      context = assemble_context(top_chunks, max_chars)
+
+      # Cache the result
+      @cache.set(cache_key, context, ttl: Settings::CACHE_TTL_SECONDS) unless context.empty?
+      context
     rescue JSON::ParserError, Timeout::Error, Errno::ECONNREFUSED => e
       @log.warn { "embed context failed (#{e.class}): #{e.message}" }
       ""
@@ -87,15 +98,9 @@ module RepoContext
           end
 
           @log.info { "indexing #{rel_path} (new/modified)..." }
-          file_chunks = []
           content = File.read(full_path)
-
-          @builder.send(:chunk_text, content, rel_path).each do |c|
-            vec = @builder.send(:embed_string, c[:text])
-            next if vec.empty?
-            c[:embedding] = vec
-            file_chunks << c
-          end
+          raw_chunks = @builder.send(:chunk_text, content, rel_path)
+          file_chunks = @builder.send(:embed_chunks, raw_chunks)
 
           if file_chunks.any?
             @store.upsert(rel_path, mtime, file_chunks)
@@ -107,7 +112,31 @@ module RepoContext
     end
 
 
-    # Note: embed_string and chunk_text are private, accessed via send() by ChunkAndStore
+    def embed_chunks(raw_chunks)
+      parallel = Settings::EMBED_PARALLEL_CHUNKS
+      return embed_chunks_sequential(raw_chunks) if parallel <= 1
+
+      embed_chunks_parallel(raw_chunks, parallel)
+    end
+
+    def embed_chunks_sequential(raw_chunks)
+      raw_chunks.filter_map do |c|
+        vec = embed_string(c[:text])
+        next if vec.empty?
+
+        c.merge(embedding: vec)
+      end
+    end
+
+    def embed_chunks_parallel(raw_chunks, concurrency)
+      raw_chunks.each_slice(concurrency).flat_map do |slice|
+        slice.map do |c|
+          Thread.new { [c, embed_string(c[:text])] }
+        end.map(&:value).filter_map do |c, vec|
+          c.merge(embedding: vec) if vec.any?
+        end
+      end
+    end
 
     def chunk_text(text, path)
       chunk_size = Settings::EMBED_CHUNK_SIZE
@@ -157,6 +186,21 @@ module RepoContext
 
       @log.info { "embed context: #{parts.size} chunks, #{total} chars" }
       parts.join("\n\n")
+    end
+
+    def cache_key_for_question(question, max_chars)
+      Digest::SHA256.hexdigest("#{question.strip}:#{max_chars}:#{Settings::EMBED_TOP_K}")
+    end
+
+    def embed_string_with_cache(text)
+      # Cache embeddings to avoid redundant API calls
+      cache_key = "embedding:#{Digest::SHA256.hexdigest(text)}"
+      cached = @cache.get(cache_key)
+      return cached if cached
+
+      embedding = embed_string(text)
+      @cache.set(cache_key, embedding, ttl: Settings::CACHE_TTL_SECONDS) unless embedding.empty?
+      embedding
     end
 
     def embed_string(text)

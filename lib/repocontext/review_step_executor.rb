@@ -2,7 +2,12 @@
 
 module RepoContext
   # Single responsibility: review one file and return findings (FileReviewOutcome).
+  # Dependencies: client (LLM duck: #generate(prompt:, schema:, model:)), model (string), logger.
   class ReviewStepExecutor
+    DEFAULT_FOCUS = "general quality"
+    SEVERITIES = %w[suggestion warning error].freeze
+    DEFAULT_SEVERITY = "suggestion"
+
     FINDINGS_SCHEMA = {
       "type" => "object",
       "required" => ["findings"],
@@ -17,7 +22,7 @@ module RepoContext
               "line" => { "type" => ["integer", "null"] },
               "rule" => { "type" => "string" },
               "message" => { "type" => "string" },
-              "severity" => { "type" => "string", "enum" => %w[suggestion warning error] }
+              "severity" => { "type" => "string", "enum" => SEVERITIES }
             }
           }
         },
@@ -40,27 +45,20 @@ module RepoContext
       @log.info { "executor: #{findings.size} finding(s) for #{path}" }
       FileReviewOutcome.new(findings: findings, observation: observation, reviewed_path: path)
     rescue Ollama::Error => e
-      @log.warn { "executor failed for #{path}: #{e.message}" }
-      FileReviewOutcome.new(
-        findings: [],
-        observation: "Review failed: #{e.message}",
-        reviewed_path: path
-      )
+      @log.warn { "executor failed for #{path}: #{e.class} - #{e.message}" }
+      FileReviewOutcome.with_observation("Review failed: #{e.message}", reviewed_path: path)
     end
 
     private
 
     def build_review_prompt(plan_step, file_content, path)
+      focus = plan_step.reasoning.to_s.strip.empty? ? DEFAULT_FOCUS : plan_step.reasoning
+      instruction = review_instruction(focus)
+      file_section = file_section(path, file_content)
       <<~PROMPT
-        You are a code reviewer. Review focus: #{plan_step.reasoning || 'general quality'}.
+        #{instruction}
 
-        Apply Clean Ruby style: clear names, single responsibility, short methods, guard clauses, no deep nesting, intention-revealing names. Flag style issues, possible bugs, and unclear code.
-
-        File: #{path}
-
-        --- file content ---
-        #{file_content}
-        --- end ---
+        #{file_section}
 
         Return JSON with:
         - "findings": array of { "file" (optional), "line" (optional number), "rule" (e.g. "naming", "method_length"), "message" (short), "severity" ("suggestion" | "warning" | "error") }
@@ -68,16 +66,30 @@ module RepoContext
       PROMPT
     end
 
+    def review_instruction(focus)
+      <<~TEXT.strip
+        You are a code reviewer. Review focus: #{focus}.
+
+        Apply Clean Ruby style: clear names, single responsibility, short methods, guard clauses, no deep nesting, intention-revealing names. Flag style issues, possible bugs, and unclear code.
+      TEXT
+    end
+
+    def file_section(path, file_content)
+      "File: #{path}\n\n--- file content ---\n#{file_content}\n--- end ---"
+    end
+
     def normalize_findings(raw, default_path)
       raw.filter_map do |h|
         next unless h.is_a?(Hash) && h["message"].to_s.strip != ""
 
+        severity = h["severity"].to_s
+        severity = DEFAULT_SEVERITY unless SEVERITIES.include?(severity)
         {
           "file" => (h["file"].to_s.strip.empty? ? default_path : h["file"].to_s.strip),
           "line" => h["line"].nil? ? nil : h["line"].to_i,
           "rule" => h["rule"].to_s.strip,
           "message" => h["message"].to_s.strip,
-          "severity" => %w[suggestion warning error].include?(h["severity"].to_s) ? h["severity"].to_s : "suggestion"
+          "severity" => severity
         }
       end
     end

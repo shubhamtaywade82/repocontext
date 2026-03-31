@@ -1,5 +1,20 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-server = File.expand_path("../chat_server.rb", __dir__)
-exec(Gem.ruby, server, *ARGV)
+$LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
+require "repocontext"
+require "repocontext/discovery_service"
+
+if ARGV.include?("--discovery")
+  query = ARGV.reject { |a| a == "--discovery" }.join(" ")
+  if query.strip.empty?
+    puts "Usage: bin/chat \"your discovery query\" --discovery"
+    exit 1
+  end
+
+  service = RepoContext::DiscoveryService.new
+  puts service.run(query)
+else
+  server = File.expand_path("../chat_server.rb", __dir__)
+  exec(Gem.ruby, server, *ARGV)
+end

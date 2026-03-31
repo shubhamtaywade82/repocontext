@@ -55,9 +55,26 @@ module RepoContext
 
     def collect_paths_from_dir(dir_path, glob_pattern, paths)
       Dir.glob(File.join(dir_path, glob_pattern)).each do |abs_path|
-        paths << abs_path.delete_prefix("#{@repo_root}/") if File.file?(abs_path)
+        next unless File.file?(abs_path)
+        next if excluded_path?(abs_path)
+        next if file_too_large?(abs_path)
+
+        paths << abs_path.delete_prefix("#{@repo_root}/")
         return if paths.size >= Settings::CANDIDATE_PATHS_MAX
       end
+    end
+
+    def excluded_path?(abs_path)
+      return false if Settings::CANDIDATE_EXCLUDE_PATTERNS.empty?
+
+      rel = abs_path.delete_prefix("#{@repo_root}/")
+      Settings::CANDIDATE_EXCLUDE_PATTERNS.any? { |pat| File.fnmatch?(pat, rel) }
+    end
+
+    def file_too_large?(abs_path)
+      return false if Settings::CANDIDATE_MAX_FILE_SIZE <= 0
+
+      File.size(abs_path) > Settings::CANDIDATE_MAX_FILE_SIZE
     end
 
     def build_pick_prompt(question, paths)

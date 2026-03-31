@@ -119,6 +119,13 @@
       border-bottom: 1px solid var(--glass-border);
       background: rgba(13, 17, 23, 0.4);
       flex-shrink: 0;
+      gap: 20px;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 20px;
     }
 
     .brand {
@@ -140,6 +147,51 @@
       color: white;
       font-weight: bold;
       box-shadow: 0 0 15px var(--primary-glow);
+    }
+
+    /* Model Selector */
+    .model-selector {
+      position: relative;
+    }
+
+    .model-select {
+      background: rgba(18, 23, 33, 0.5);
+      border: 1px solid var(--glass-border);
+      border-radius: 10px;
+      padding: 8px 32px 8px 12px;
+      color: var(--text-main);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path fill="%238b949e" d="M6 8l-4-4h8z"/></svg>');
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      min-width: 180px;
+    }
+
+    .model-select:hover {
+      border-color: var(--primary);
+      background-color: rgba(18, 23, 33, 0.7);
+    }
+
+    .model-select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+    }
+
+    .model-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-bottom: 4px;
+      display: block;
     }
 
     /* Nav Tabs */
@@ -536,9 +588,23 @@
 
     <!-- Header -->
     <header class="header">
-      <div class="brand">
-        <div class="brand-icon">AI</div>
-        <span>RepoContext</span>
+      <div class="header-left">
+        <div class="brand">
+          <div class="brand-icon">AI</div>
+          <span>RepoContext</span>
+        </div>
+        <div class="model-selector">
+          <label class="model-label">Model</label>
+          <select id="modelSelect" class="model-select">
+            <option value="" selected>Loading models...</option>
+          </select>
+        </div>
+        <div class="model-selector" id="repoSelectorWrapper" style="display:none;">
+          <label class="model-label">Discovery Context</label>
+          <div id="repoList" style="display:flex; gap:8px; flex-wrap:wrap; max-width: 400px;">
+            <!-- Repos will be injected here -->
+          </div>
+        </div>
       </div>
       <nav class="nav-tabs">
         <button class="btn-reset nav-tab active" data-target="chat">Chat</button>
@@ -570,6 +636,12 @@
             <div class="input-wrapper">
               <div class="chat-status-bar" id="chatStatus" style="display:none;">
                 <span class="spinner"></span> <span id="chatStatusText">Processing...</span>
+              </div>
+              <div style="display:flex; align-items:center; gap: 12px; margin-bottom: 8px; font-size: 0.8rem; color: var(--text-muted);">
+                <label style="display:flex; align-items:center; gap: 6px; cursor:pointer;">
+                  <input type="checkbox" id="discoveryToggle" style="accent-color: var(--primary);">
+                  <span style="color: var(--primary); font-weight: 600;">Discovery Mode (Search across multiple repos via MCP)</span>
+                </label>
               </div>
               <textarea id="chatInput" class="chat-input" placeholder="Ask a question about the repo..." rows="1"></textarea>
               <button id="chatSendBtn" class="btn-reset send-btn">
@@ -633,6 +705,54 @@
     return d.innerHTML;
   };
 
+  // -- Models & Repositories --
+  async function loadModels() {
+    const modelSelect = $('modelSelect');
+    try {
+      const resp = await fetch('/api/models');
+      const data = await resp.json();
+      if (data.models && data.models.length > 0) {
+        modelSelect.innerHTML = '';
+        data.models.forEach((model, index) => {
+          const option = document.createElement('option');
+          option.value = model.name;
+          option.textContent = model.display_name || model.name;
+          if (index === 0) option.selected = true;
+          modelSelect.appendChild(option);
+        });
+      }
+    } catch (err) { console.error('Failed to load models:', err); }
+  }
+
+  async function loadRepositories() {
+    const repoList = $('repoList');
+    try {
+      const resp = await fetch('/api/repositories');
+      const data = await resp.json();
+      if (data.repositories) {
+        repoList.innerHTML = '';
+        data.repositories.forEach((url, index) => {
+          const repoName = url.split('/').pop();
+          const label = document.createElement('label');
+          label.className = 'suggestion-chip';
+          label.innerHTML = `<input type="checkbox" name="mcp_repo" value="${url}" checked> ${repoName}`;
+          repoList.appendChild(label);
+        });
+      }
+    } catch (err) { console.error('Failed to load repos:', err); }
+  }
+
+  loadModels();
+  loadRepositories();
+
+  // Discovery Toggle Logic
+  $('discoveryToggle').addEventListener('change', (e) => {
+    $('repoSelectorWrapper').style.display = e.target.checked ? 'block' : 'none';
+    chatInput.placeholder = e.target.checked
+      ? "Ask a question across selected repositories..."
+      : "Ask a question about the local repo...";
+  });
+
   // -- Tabs --
   document.querySelectorAll('.nav-tab').forEach(t => {
     t.addEventListener('click', () => {
@@ -682,6 +802,7 @@
     const txt = chatInput.value.trim();
     if (!txt) return;
 
+    const selectedModel = $('modelSelect').value;
     chatInput.value = '';
     appendChatMsg('user', txt);
 
@@ -707,11 +828,21 @@
 
     let lastStep = null;
 
+    const isDiscovery = $('discoveryToggle').checked;
+    const endpoint = isDiscovery ? '/api/discovery/stream' : '/api/chat/stream';
+    const selectedRepos = Array.from(document.querySelectorAll('input[name="mcp_repo"]:checked')).map(i => i.value);
+
     try {
-      const resp = await fetch('/api/chat/stream', {
+      const resp = await fetch(endpoint, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ message: txt, history: chatHistory })
+        body: JSON.stringify({
+          message: txt,
+          query: txt, // Discovery uses 'query' key
+          history: chatHistory,
+          model: selectedModel,
+          repositories: selectedRepos
+        })
       });
 
       const reader = resp.body.getReader();
@@ -798,6 +929,7 @@
   async function runReview() {
     const paths = $('reviewPaths').value.split(',').map(s=>s.trim()).filter(Boolean);
     const focus = $('reviewFocus').value.trim();
+    const selectedModel = $('modelSelect').value;
 
     startReviewBtn.disabled = true;
     reviewTimeline.innerHTML = '';
@@ -809,7 +941,7 @@
       const resp = await fetch('/api/review/stream', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ paths, focus })
+        body: JSON.stringify({ paths, focus, model: selectedModel })
       });
 
       const reader = resp.body.getReader();

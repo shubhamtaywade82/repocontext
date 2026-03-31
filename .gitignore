@@ -6,3 +6,5 @@
 *.log
 /.ruby-version
 repocontext.db
+repocontext.db-shm
+repocontext.db-wal

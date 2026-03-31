@@ -52,6 +52,16 @@ module RepoContext
 
     def init_db
       @db = SQLite3::Database.new(@db_path)
+
+      # Enable WAL mode for better concurrent read/write performance
+      @db.execute("PRAGMA journal_mode=WAL;")
+
+      # Optimize for read-heavy workloads
+      @db.execute("PRAGMA synchronous=NORMAL;")
+      @db.execute("PRAGMA cache_size=-64000;")  # 64MB cache
+      @db.execute("PRAGMA temp_store=MEMORY;")
+
+      # Create table
       @db.execute <<-SQL
         CREATE TABLE IF NOT EXISTS items (
           path TEXT,
@@ -61,7 +71,16 @@ module RepoContext
           embedding BLOB
         );
       SQL
+
+      # Create indexes for faster lookups
       @db.execute("CREATE INDEX IF NOT EXISTS idx_path ON items (path);")
+      @db.execute("CREATE INDEX IF NOT EXISTS idx_path_chunk ON items (path, chunk_index);")
+      @db.execute("CREATE INDEX IF NOT EXISTS idx_path_mtime ON items (path, mtime);")
+
+      # Analyze to optimize query planner
+      @db.execute("ANALYZE;")
+
+      @log.debug { "vector store initialized: #{@db_path} (WAL mode)" }
     end
   end
 end

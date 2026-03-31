@@ -2,8 +2,33 @@
 
 module RepoContext
   # Agentic code review loop: plan → execute → observe until done.
-  # Depends on abstractions: path_source (duck type: candidate_paths), planner, executor, summary_writer.
+  # Dependencies (injected): path_source (duck: #candidate_paths), planner (duck: #next_step(state, paths) => ReviewPlanStep),
+  #   executor (duck: #execute(plan_step, file_content:, path:)), summary_writer (duck: #summarize(state)).
+  # Event callback: optional block (event_name, iteration, payload). Events: :init, :plan, :review_file, :review_done,
+  #   :summarize, :summary_done, :done. Payload varies by event (e.g. paths, FileReviewOutcome, ReviewState).
   class CodeReviewAgent
+    # Common patterns to exclude from code review
+    EXCLUDED_PATTERNS = [
+      "**/node_modules/**",
+      "**/vendor/**",
+      "**/.git/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/*.min.js",
+      "**/*.bundle.js",
+      "**/*.lock",
+      "**/package-lock.json",
+      "**/Gemfile.lock"
+    ].freeze
+
+    # Binary file extensions to skip
+    BINARY_EXTENSIONS = %w[
+      .jpg .jpeg .png .gif .bmp .ico .svg
+      .pdf .zip .tar .gz .tgz .rar .7z
+      .exe .dll .so .dylib .bin
+      .mp3 .mp4 .avi .mov .wav
+      .woff .woff2 .ttf .eot
+    ].freeze
     def initialize(
       path_source:,
       planner:,
@@ -65,7 +90,41 @@ module RepoContext
 
     def resolve_paths_to_review(request_paths)
       paths = request_paths.any? ? request_paths : @path_source.candidate_paths
-      paths.first(Settings::REVIEW_MAX_PATHS)
+      filtered = paths.select { |p| reviewable_file?(p) }
+      limited = filtered.first(Settings::REVIEW_MAX_PATHS)
+
+      skipped_count = paths.size - filtered.size
+      @log.info { "review paths: #{limited.size} selected, #{skipped_count} filtered" } if skipped_count > 0
+
+      limited
+    end
+
+    def reviewable_file?(path)
+      # Check if file exists
+      full_path = File.join(Settings::REPO_ROOT, path)
+      return false unless File.file?(full_path)
+
+      # Check file size
+      file_size = File.size(full_path)
+      if file_size > Settings::REVIEW_MAX_FILE_SIZE
+        @log.debug { "skipping large file: #{path} (#{file_size} bytes)" }
+        return false
+      end
+
+      # Check excluded patterns
+      if EXCLUDED_PATTERNS.any? { |pattern| File.fnmatch(pattern, path, File::FNM_PATHNAME) }
+        @log.debug { "skipping excluded pattern: #{path}" }
+        return false
+      end
+
+      # Check binary extensions
+      ext = File.extname(path).downcase
+      if BINARY_EXTENSIONS.include?(ext)
+        @log.debug { "skipping binary file: #{path}" }
+        return false
+      end
+
+      true
     end
 
     def run_summary_and_emit(current_state, event_callback)

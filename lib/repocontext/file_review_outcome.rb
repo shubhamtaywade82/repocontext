@@ -2,7 +2,7 @@
 
 module RepoContext
   # Outcome of reviewing a single file (or the summary step): findings list, optional observation, optional path.
-  # Use .with_no_findings(reviewed_path: path) for a class-level factory when no findings were produced.
+  # Factories: .with_no_findings(reviewed_path:) when no findings; .with_observation(observation, reviewed_path:) for summary/error outcomes.
   class FileReviewOutcome
     attr_reader :findings, :observation, :reviewed_path
 
@@ -14,6 +14,10 @@ module RepoContext
 
     def self.with_no_findings(reviewed_path: nil)
       new(findings: [], observation: nil, reviewed_path: reviewed_path)
+    end
+
+    def self.with_observation(observation, reviewed_path: nil)
+      new(findings: [], observation: observation, reviewed_path: reviewed_path)
     end
   end
 end

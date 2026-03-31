@@ -10,6 +10,7 @@ Sinatra app that answers questions about a codebase using repo file contents and
 - [Dependencies](#dependencies)
 - [Installation](#installation)
 - [Configuration](#configuration)
+- [Performance](#performance)
 - [Run](#run)
 - [Usage](#usage)
 - [API reference](#api-reference)
@@ -46,8 +47,7 @@ Agentic loop: the planner chooses the next file to review, the executor reviews 
 
 ### Embeddings (on by default)
 
-- RAG uses embeddings to add relevant chunks per question. Run `ollama pull nomic-embed-text:v1.5` before using.
-res Ollama 0.1.26+).
+- RAG uses embeddings to add relevant chunks per question. Run `ollama pull nomic-embed-text:v1.5` before using (requires Ollama 0.1.26+).
 - Set `EMBED_CONTEXT_ENABLED=false` to disable. Tune `EMBED_TOP_K`, `EMBED_MAX_CHUNKS`, `EMBED_MIN_QUESTION_LENGTH` for efficiency.
 
 ---
@@ -87,7 +87,20 @@ Create a `.env` (or export) for overrides:
 | REVIEW_MAX_ITERATIONS     | Max code review loop steps          | 15                          |
 | REVIEW_MAX_PATHS          | Max paths per review                | 20                          |
 | REVIEW_FOCUS              | Default review focus                | Clean Ruby focus string     |
+| CANDIDATE_MAX_FILE_SIZE   | Skip files larger than (bytes); 0=no limit | 500000                |
+| CANDIDATE_EXCLUDE_PATTERNS| Comma-separated fnmatch patterns    | (none)                      |
+| EMBED_PARALLEL_CHUNKS     | Parallel embed requests per file    | 1 (sequential)              |
 | LOG_LEVEL                 | debug or info                       | info                        |
+
+---
+
+## Performance
+
+- **Embedding cache**: Embeddings are stored in SQLite (`repocontext.db`). Unchanged files (by mtime) are not re-embedded. WAL mode and indexes are used for faster reads.
+- **File filtering**: Discovery and code review skip files over `CANDIDATE_MAX_FILE_SIZE` and paths matching `CANDIDATE_EXCLUDE_PATTERNS` (e.g. `vendor/*,*.min.js`).
+- **Parallel embedding**: Set `EMBED_PARALLEL_CHUNKS` (e.g. 4) to embed chunks of new/modified files in parallel (more load on Ollama).
+- **Streaming**: Use `/api/chat/stream` and `/api/review/stream` for incremental status and results without blocking.
+- **Limits**: `REVIEW_MAX_PATHS`, `REVIEW_MAX_ITERATIONS`, `CANDIDATE_PATHS_MAX`, and `CONTEXT_MAX_CHARS` cap work per request.
 
 ---
 
